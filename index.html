@@ -115,6 +115,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 #zoomVal{min-width:46px;text-align:center;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--muted)}
 #isLegend{left:max(16px,env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));padding:6px 12px;gap:10px;font-size:12px;color:var(--muted);flex-wrap:wrap;max-width:calc(100% - 260px)}
 #isLegend span{display:inline-flex;align-items:center;gap:5px}
+#multiBar{left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));font-size:13px;padding:4px 4px 4px 14px}
+#multiBar #multiTx{font-weight:600}
+#multiDel{color:var(--but)}
+#marquee{position:fixed;z-index:4;border:1.5px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);pointer-events:none;border-radius:2px}
+#viewport.handtool{cursor:grab}
+.ib.tool.on{background:var(--hover);color:var(--accent);box-shadow:inset 0 0 0 1.5px currentColor}
+@media (max-width:640px){#multiBar{bottom:calc(140px + env(safe-area-inset-bottom,0px))}}
 #isLegend b{color:var(--ink);font-weight:600}
 
 /* ---------- project manager ---------- */
@@ -150,6 +157,14 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .conn b{font-size:10.5px;letter-spacing:.08em;flex:none}
 .conn b.t-therefore{color:var(--therefore)} .conn b.t-because{color:var(--because)} .conn b.t-but{color:var(--but)}
 .conn span{min-width:0;overflow-wrap:anywhere}
+.conn{align-items:center;flex-wrap:wrap}
+.tsel{font:inherit;font-size:10.5px;font-weight:600;letter-spacing:.06em;border:1.5px solid currentColor;border-radius:10px;padding:2px 4px;background:var(--panel);cursor:pointer;flex:none}
+.tsel.t-therefore{color:var(--therefore)} .tsel.t-because{color:var(--because)} .tsel.t-but{color:var(--but)}
+.cdel{margin-left:auto;font-size:16px;padding:0 6px}
+.lbl{cursor:pointer}
+.lbl:hover{filter:brightness(1.08);transform:translate(-50%,-50%) scale(1.08)}
+#pop .ib.on{background:currentColor}#pop .ib.on{color:var(--panel)}
+#pop .ib.t-therefore.on{background:var(--therefore)} #pop .ib.t-because.on{background:var(--because)} #pop .ib.t-but.on{background:var(--but)}
 .muted{color:var(--muted);font-size:12.5px}
 .btn{border:1px solid var(--rule);background:var(--panel);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:500}
 .btn:hover{background:var(--hover)}
@@ -273,6 +288,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 </main>
 
 <div class="island" id="isTools" role="toolbar" aria-label="Werkzeuge" data-view="board">
+  <button class="ib tool on" data-tool="select" title="Auswählen: Fläche aufziehen markiert mehrere Szenen (V)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3l14 8-6 2-2 6z"/></svg>Auswahl</button>
+  <button class="ib tool" data-tool="hand" title="Verschieben: Fläche ziehen bewegt die Ansicht (H, oder Leertaste gedrückt halten)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 13V5a1.5 1.5 0 013 0v6M11 11V4a1.5 1.5 0 013 0v7M14 11V5.5a1.5 1.5 0 013 0V14a6 6 0 01-6 6h-1a6 6 0 01-5-2.7L3.5 14a1.5 1.5 0 012.4-1.8L8 14"/></svg>Hand</button>
+  <span class="sep"></span>
   <button class="ib" id="btnAdd" title="Neue Szene (N)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5"/></svg>Szene</button>
   <span class="sep"></span>
   <div class="tcap">Pfeil-Typ</div>
@@ -287,6 +305,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   <span class="sep"></span>
   <button class="ib" id="btnFit" title="Alles zeigen" aria-label="Alles zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
 </div>
+<div class="island" id="multiBar" hidden><span id="multiTx"></span><span class="sep"></span><button class="ib" id="multiDel">Löschen</button><button class="ib" id="multiClear">Aufheben</button></div>
+<div id="marquee" hidden></div>
 <div class="island" id="isLegend" data-view="board" aria-label="Farben nach Version"></div>
 
 <!-- ================= STORY ================= -->
@@ -526,6 +546,7 @@ const sceneById = id => D().scenes.find(s => s.id === id);
 
 let view = { x: 120, y: 110, z: 0.8 };
 let sel = null, charSel = null, newType = 'therefore';
+let multi = new Set(), tool = 'select', spaceDown = false;
 
 /* ================= tabs & header ================= */
 function setTab(t) {
@@ -534,6 +555,7 @@ function setTab(t) {
   document.querySelectorAll('[data-view="board"]').forEach(el => el.hidden = t !== 'board');
   $('#storyView').hidden = t !== 'story';
   $('#charView').hidden = t !== 'chars';
+  updateMultiBar();
   if (t !== 'board') { $('#panel').hidden = true; $('#flow').hidden = true; $('#btnFlow').classList.remove('on'); hidePop(); }
   if (t !== 'chars') $('#charPanel').hidden = true;
   if (t === 'story') renderStory();
@@ -550,7 +572,7 @@ function renderHeader() {
 }
 function switchTo(pid, vid) {
   store.active = pid; const p = P(); if (vid) p.activeVersion = vid;
-  sel = null; charSel = null; closePM();
+  sel = null; multi = new Set(); charSel = null; closePM();
   const d = D(), hadView = !!d.view;
   if (hadView) view = { ...d.view };
   renderHeader(); setTab(store.tab); save();
@@ -653,7 +675,7 @@ function cardInner(s, conn) {
 }
 function renderCards() {
   const conn = connectedIds();
-  cardsEl.innerHTML = D().scenes.map(s => `<div class="card${sel && sel.kind === 'scene' && sel.id === s.id ? ' sel' : ''}" data-id="${esc(s.id)}" data-c="${vcol(s.v)}" style="transform:translate(${s.x}px,${s.y}px)">${cardInner(s, conn)}</div>`).join('');
+  cardsEl.innerHTML = D().scenes.map(s => `<div class="card${isSel(s.id) ? ' sel' : ''}" data-id="${esc(s.id)}" data-c="${vcol(s.v)}" style="transform:translate(${s.x}px,${s.y}px)">${cardInner(s, conn)}</div>`).join('');
 }
 function rectOf(id) {
   const s = sceneById(id); if (!s) return null;
@@ -689,21 +711,34 @@ function render() { renderCards(); renderLinks(); }
 
 let mode = null, pinch = null;
 const pointers = new Map();
+const isSel = id => (sel && sel.kind === 'scene' && sel.id === id) || multi.has(id);
+vp.addEventListener('contextmenu', e => e.preventDefault());
 vp.addEventListener('pointerdown', e => {
-  if (e.button > 0) return;
+  if (e.button > 2) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pointers.size === 2 && mode && mode.kind === 'pan') { const [p, q] = [...pointers.values()]; pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), z: view.z }; return; }
-  if (e.target.closest('.lbl')) return;
+  if (pointers.size === 2 && mode && (mode.kind === 'pan' || mode.kind === 'marquee')) {
+    if (mode.kind === 'marquee') { $('#marquee').hidden = true; mode = { kind: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: true }; }
+    const [p, q] = [...pointers.values()]; pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), z: view.z }; return;
+  }
+  if (e.button === 0 && e.target.closest('.lbl')) return;
   const handle = e.target.closest('.handle'), card = e.target.closest('.card');
+  const panGesture = e.button === 1 || e.button === 2 || spaceDown || (tool === 'hand' && !handle);
   hidePop();
-  if (handle) {
+  if (panGesture) {
+    mode = { kind: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false }; vp.classList.add('panning');
+  } else if (handle) {
     const id = handle.closest('.card').dataset.id, r = rectOf(id), w = toWorld(e.clientX, e.clientY);
     mode = { kind: 'connect', from: id }; temp = { x1: r.x + r.w / 2, y1: r.y + r.h / 2, x2: w.x, y2: w.y };
   } else if (card) {
     const s = sceneById(card.dataset.id), w = toWorld(e.clientX, e.clientY);
-    mode = { kind: 'drag', id: s.id, el: card, ox: w.x - s.x, oy: w.y - s.y, sx: e.clientX, sy: e.clientY, moved: false };
-  } else {
+    const group = multi.size > 1 && multi.has(s.id) && !e.shiftKey
+      ? [...multi].map(id => sceneById(id)).filter(Boolean).map(x => ({ s: x, ox: w.x - x.x, oy: w.y - x.y, el: cardsEl.querySelector(`.card[data-id="${CSS.escape(x.id)}"]`) }))
+      : [{ s, ox: w.x - s.x, oy: w.y - s.y, el: card }];
+    mode = { kind: 'drag', id: s.id, el: card, group, shift: e.shiftKey, sx: e.clientX, sy: e.clientY, moved: false };
+  } else if (e.pointerType === 'touch') {
     mode = { kind: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false }; vp.classList.add('panning');
+  } else {
+    mode = { kind: 'marquee', sx: e.clientX, sy: e.clientY, add: e.shiftKey, base: e.shiftKey ? new Set([...multi, ...(sel && sel.kind === 'scene' ? [sel.id] : [])]) : new Set(), moved: false };
   }
   vp.setPointerCapture(e.pointerId); e.preventDefault();
 });
@@ -720,10 +755,23 @@ vp.addEventListener('pointermove', e => {
     view.x = mode.vx + dx; view.y = mode.vy + dy; applyView();
   } else if (mode.kind === 'drag') {
     if (!mode.moved && Math.abs(e.clientX - mode.sx) + Math.abs(e.clientY - mode.sy) < 4) return;
-    mode.moved = true; mode.el.classList.add('dragging');
-    const w = toWorld(e.clientX, e.clientY), s = sceneById(mode.id);
-    s.x = Math.round(w.x - mode.ox); s.y = Math.round(w.y - mode.oy);
-    mode.el.style.transform = `translate(${s.x}px,${s.y}px)`; renderLinks();
+    mode.moved = true;
+    const w = toWorld(e.clientX, e.clientY);
+    for (const g of mode.group) {
+      g.s.x = Math.round(w.x - g.ox); g.s.y = Math.round(w.y - g.oy);
+      if (g.el) { g.el.classList.add('dragging'); g.el.style.transform = `translate(${g.s.x}px,${g.s.y}px)`; }
+    }
+    renderLinks();
+  } else if (mode.kind === 'marquee') {
+    const x1 = Math.min(mode.sx, e.clientX), y1 = Math.min(mode.sy, e.clientY), x2 = Math.max(mode.sx, e.clientX), y2 = Math.max(mode.sy, e.clientY);
+    if (!mode.moved && x2 - x1 + y2 - y1 < 5) return;
+    mode.moved = true;
+    const m = $('#marquee'); m.hidden = false;
+    Object.assign(m.style, { left: x1 + 'px', top: y1 + 'px', width: (x2 - x1) + 'px', height: (y2 - y1) + 'px' });
+    const a = toWorld(x1, y1), b = toWorld(x2, y2), hit = new Set(mode.base);
+    for (const sc of D().scenes) { const r = rectOf(sc.id); if (r.x < b.x && r.x + r.w > a.x && r.y < b.y && r.y + r.h > a.y) hit.add(sc.id); }
+    mode.hit = hit;
+    cardsEl.querySelectorAll('.card').forEach(c => c.classList.toggle('sel', hit.has(c.dataset.id)));
   } else if (mode.kind === 'connect') {
     const w = toWorld(e.clientX, e.clientY); temp.x2 = w.x; temp.y2 = w.y;
     cardsEl.querySelectorAll('.drop').forEach(c => c.classList.remove('drop'));
@@ -737,8 +785,17 @@ function endPointer(e) {
   if (pinch) { if (pointers.size < 2) pinch = null; if (pointers.size) return; }
   if (!mode) return;
   const m = mode; mode = null; vp.classList.remove('panning');
-  if (m.kind === 'pan') { if (!m.moved) select(null); else save(); }
-  else if (m.kind === 'drag') { m.el.classList.remove('dragging'); if (m.moved) save(); else select({ kind: 'scene', id: m.id }); }
+  if (m.kind === 'pan') { if (!m.moved && e.button === 0 && !spaceDown && tool !== 'hand') select(null); else save(); }
+  else if (m.kind === 'marquee') {
+    $('#marquee').hidden = true;
+    if (!m.moved) select(null); else setMulti(m.hit || m.base);
+  }
+  else if (m.kind === 'drag') {
+    m.group.forEach(g => g.el && g.el.classList.remove('dragging'));
+    if (m.moved) { save(); if (m.group.length === 1 && !isSel(m.id)) select({ kind: 'scene', id: m.id }); }
+    else if (m.shift) { const ids = new Set(multi); if (sel && sel.kind === 'scene') ids.add(sel.id); ids.has(m.id) ? ids.delete(m.id) : ids.add(m.id); setMulti(ids); }
+    else select({ kind: 'scene', id: m.id });
+  }
   else if (m.kind === 'connect') {
     const over = targetCard(e); temp = null;
     cardsEl.querySelectorAll('.drop').forEach(c => c.classList.remove('drop'));
@@ -768,12 +825,43 @@ vp.addEventListener('wheel', e => {
 }, { passive: false });
 labelsEl.addEventListener('click', e => {
   const b = e.target.closest('.lbl'); if (!b) return;
-  select({ kind: 'link', id: b.dataset.link });
-  const r = b.getBoundingClientRect(); showPop(r.left + r.width / 2, r.top);
+  openLinkPop(b.dataset.link);
 });
 
+function setMulti(ids) {
+  ids = [...ids].filter(id => sceneById(id));
+  if (ids.length === 1) return select({ kind: 'scene', id: ids[0] });
+  if (!ids.length) return select(null);
+  sel = null; multi = new Set(ids);
+  $('#panel').hidden = true; hidePop(); render(); updateMultiBar();
+}
+function updateMultiBar() {
+  const n = multi.size;
+  $('#multiBar').hidden = n < 2 || store.tab !== 'board';
+  if (n > 1) $('#multiTx').textContent = `${n} Szenen markiert`;
+}
+function deleteScenes(ids) {
+  const d = D(), set = new Set(ids);
+  d.scenes = d.scenes.filter(s => !set.has(s.id)); d.links = d.links.filter(l => !set.has(l.from) && !set.has(l.to));
+  save(); select(null); toast(set.size === 1 ? 'Szene gelöscht' : `${set.size} Szenen gelöscht`);
+}
+$('#multiClear').onclick = () => select(null);
+$('#multiDel').onclick = () => {
+  const ids = [...multi];
+  openModal(`<h3>${ids.length} Szenen löschen?</h3><p>Die markierten Szenen und ihre Verbindungen werden entfernt.</p>
+    <div class="row"><button class="btn danger" id="mdGo">${ids.length} Szenen löschen</button><button class="btn" data-close>Abbrechen</button></div>`);
+  $('#mdGo').onclick = () => { closeModal(); deleteScenes(ids); };
+};
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('.ib.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
+  vp.classList.toggle('handtool', t === 'hand');
+}
+document.querySelectorAll('.ib.tool').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+document.addEventListener('keyup', e => { if (e.code === 'Space') { spaceDown = false; vp.classList.toggle('handtool', tool === 'hand'); } });
+addEventListener('blur', () => { spaceDown = false; });
 function select(s) {
-  sel = s; render();
+  sel = s; multi = new Set(); updateMultiBar(); render();
   $('#panel').hidden = !(s && s.kind === 'scene');
   if (s && s.kind === 'scene') { $('#flow').hidden = true; $('#btnFlow').classList.remove('on'); fillPanel(); }
   if (!s || s.kind !== 'link') hidePop();
@@ -790,10 +878,21 @@ function refreshPanel() {
   $('#fVer').innerHTML = `${vdot(s.v)} V${s.v}` + (s.v !== cur ? ` · wird ${VNAME[vcol(cur)]} (V${cur}), sobald du Text änderst` : '');
   const out = D().links.filter(l => l.from === sel.id), inc = D().links.filter(l => l.to === sel.id);
   const rows = [
-    ...inc.map(l => `<div class="conn"><span class="muted">${esc(sceneLabel(l.from))}</span> <b class="t-${l.type}">${l.type.toUpperCase()}</b> <span>diese Szene</span></div>`),
-    ...out.map(l => `<div class="conn"><span>Diese Szene</span> <b class="t-${l.type}">${l.type.toUpperCase()}</b> <span class="muted">${esc(sceneLabel(l.to))}</span></div>`)];
+    ...inc.map(l => `<div class="conn"><span class="muted">${esc(sceneLabel(l.from))}</span>${typeSel(l)}<span>diese Szene</span>${delBtn(l)}</div>`),
+    ...out.map(l => `<div class="conn"><span>Diese Szene</span>${typeSel(l)}<span class="muted">${esc(sceneLabel(l.to))}</span>${delBtn(l)}</div>`)];
   $('#conns').innerHTML = rows.length ? rows.join('') : '<div class="muted">Noch keine Verbindung. Zieh den Punkt am rechten Rand der Karte auf eine andere Szene.</div>';
 }
+const typeSel = l => `<select class="tsel t-${l.type}" data-link="${esc(l.id)}" aria-label="Art der Verbindung">${TYPES.map(t => `<option value="${t}"${t === l.type ? ' selected' : ''}>${t.toUpperCase()}</option>`).join('')}</select>`;
+const delBtn = l => `<button class="x cdel" data-link="${esc(l.id)}" title="Verbindung löschen" aria-label="Verbindung löschen">×</button>`;
+$('#conns').addEventListener('change', e => {
+  const t = e.target.closest('.tsel'); if (!t) return;
+  const l = D().links.find(x => x.id === t.dataset.link); if (!l) return;
+  l.type = t.value; save(); render(); refreshPanel();
+});
+$('#conns').addEventListener('click', e => {
+  const b = e.target.closest('.cdel'); if (!b) return;
+  const d = D(); d.links = d.links.filter(x => x.id !== b.dataset.link); save(); render(); refreshPanel(); toast('Verbindung gelöscht');
+});
 function bindField(id, key) {
   $(id).addEventListener('input', e => {
     const s = sceneById(sel.id); if (!s) return;
@@ -806,20 +905,26 @@ function bindField(id, key) {
 }
 bindField('#fNum', 'num'); bindField('#fHead', 'heading'); bindField('#fBody', 'content');
 $('#panelClose').onclick = () => select(null);
-$('#btnDelScene').onclick = () => {
-  const id = sel.id, d = D();
-  d.scenes = d.scenes.filter(s => s.id !== id); d.links = d.links.filter(l => l.from !== id && l.to !== id);
-  save(); select(null); toast('Szene gelöscht');
-};
-function showPop(x, y) { const p = $('#pop'); p.hidden = false; p.style.left = Math.max(150, Math.min(innerWidth - 150, x)) + 'px'; p.style.top = Math.max(120, y) + 'px'; }
+$('#btnDelScene').onclick = () => deleteScenes([sel.id]);
+function openLinkPop(id) {
+  select({ kind: 'link', id });
+  const lb = labelsEl.querySelector(`.lbl[data-link="${CSS.escape(id)}"]`); if (!lb) return;
+  const r = lb.getBoundingClientRect(), l = D().links.find(x => x.id === id);
+  document.querySelectorAll('#pop [data-set]').forEach(b => b.classList.toggle('on', !!l && b.dataset.set === l.type));
+  const p = $('#pop'), below = r.top < 170;
+  p.hidden = false;
+  p.style.left = Math.max(170, Math.min(innerWidth - 170, r.left + r.width / 2)) + 'px';
+  p.style.top = (below ? r.bottom : r.top) + 'px';
+  p.style.transform = below ? 'translate(-50%, 12px)' : 'translate(-50%, calc(-100% - 12px))';
+}
 function hidePop() { $('#pop').hidden = true; }
 $('#pop').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || !sel || sel.kind !== 'link') return;
   const d = D(), l = d.links.find(x => x.id === sel.id); if (!l) return;
   if (b.dataset.set) l.type = b.dataset.set;
   if (b.dataset.act === 'flip') [l.from, l.to] = [l.to, l.from];
-  if (b.dataset.act === 'del') { d.links = d.links.filter(x => x.id !== l.id); save(); select(null); return; }
-  save(); render(); hidePop();
+  if (b.dataset.act === 'del') { d.links = d.links.filter(x => x.id !== l.id); save(); select(null); toast('Verbindung gelöscht'); return; }
+  save(); openLinkPop(l.id);
 });
 function nextNum() { const n = D().scenes.map(s => parseInt(s.num, 10)).filter(Number.isFinite); return String((n.length ? Math.max(...n) : 0) + 1); }
 function addScene(x, y, open = true) {
@@ -1135,6 +1240,11 @@ document.addEventListener('keydown', e => {
   if (e.target.matches('input,textarea,select')) { if (e.key === 'Escape') e.target.blur(); return; }
   if (e.key === 'Escape') { closeModal(); closePM(); closeAcct(); if (store.tab === 'board') select(null); }
   if (store.tab !== 'board') return;
+  if (e.code === 'Space') { if (!spaceDown) { spaceDown = true; vp.classList.add('handtool'); } e.preventDefault(); return; }
+  if (e.key === 'v' || e.key === 'V') setTool('select');
+  if (e.key === 'h' || e.key === 'H') setTool('hand');
+  if ((e.key === 'a' || e.key === 'A') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); setMulti(D().scenes.map(s => s.id)); return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && multi.size > 1) { $('#multiDel').click(); return; }
   if ((e.key === 'Delete' || e.key === 'Backspace') && sel) {
     if (sel.kind === 'link') { const d = D(); d.links = d.links.filter(l => l.id !== sel.id); save(); select(null); }
     else if (sel.kind === 'scene') $('#btnDelScene').click();
@@ -1351,7 +1461,7 @@ function refreshAll() {
   if (store.tab === 'board') {
     if (sel && sel.kind === 'scene' && !sceneById(sel.id)) select(null);
     else if (sel && sel.kind === 'link' && !D().links.some(l => l.id === sel.id)) select(null);
-    else { render(); if (sel && sel.kind === 'scene') fillPanel(); }
+    else { multi = new Set([...multi].filter(id => sceneById(id))); updateMultiBar(); render(); if (sel && sel.kind === 'scene') fillPanel(); }
     renderFlow();
   }
   if (store.tab === 'story') renderStory();
