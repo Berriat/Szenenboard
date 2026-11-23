@@ -1,0 +1,1102 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Szenenboard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+<style>
+/* Layout: three views behind one top menu (Story · Szenenboard · Figuren). Board = infinite dotted canvas with floating tool islands; Story = centred manuscript column; Figuren = card grid with side editor. Project/version manager drops down from the top-left island. */
+:root{
+  --bg:#f2f3f5; --dot:#c9ced6; --ink:#1e232b; --muted:#5f6875; --rule:#e1e4e9;
+  --panel:#ffffff; --hover:#eef1f5; --accent:#3859d6; --accent-ink:#ffffff; --field:#f6f7f9;
+  --therefore:#3859d6; --because:#c26a00; --but:#c2334d;
+  --n-yellow:#fff3a3; --n-pink:#ffd1dc; --n-blue:#cfe6ff; --n-green:#d4f2c9; --n-orange:#ffdcb3; --n-purple:#e5d9ff;
+  --note-ink:#22262d; --note-muted:#4b5260; --note-line:rgba(0,0,0,.12);
+  --shadow:0 1px 2px rgba(20,25,35,.08),0 4px 16px rgba(20,25,35,.10);
+  --shadow-note:0 1px 1px rgba(0,0,0,.06),0 6px 14px rgba(0,0,0,.10);
+  --f-slug:"Courier Prime","Courier New",Courier,monospace;
+  --f-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-read:"Literata",Georgia,"Times New Roman",serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#16191e; --dot:#30363f; --ink:#e6e9ee; --muted:#9aa3b0; --rule:#2c323b;
+  --panel:#1f242b; --hover:#2a3038; --accent:#8ea4ff; --accent-ink:#10131a; --field:#191d23;
+  --therefore:#8ea4ff; --because:#f0a64a; --but:#f2788d;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.45);
+  --shadow-note:0 1px 1px rgba(0,0,0,.3),0 8px 18px rgba(0,0,0,.4);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#16191e; --dot:#30363f; --ink:#e6e9ee; --muted:#9aa3b0; --rule:#2c323b;
+  --panel:#1f242b; --hover:#2a3038; --accent:#8ea4ff; --accent-ink:#10131a; --field:#191d23;
+  --therefore:#8ea4ff; --because:#f0a64a; --but:#f2788d;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.45);
+  --shadow-note:0 1px 1px rgba(0,0,0,.3),0 8px 18px rgba(0,0,0,.4);
+  color-scheme:dark}
+
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);overflow:hidden}
+button,select{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- board canvas ---------- */
+#viewport{position:fixed;inset:0;overflow:hidden;touch-action:none;
+  background-color:var(--bg);background-image:radial-gradient(circle,var(--dot) 1.2px,transparent 1.4px);background-size:24px 24px}
+#viewport.panning{cursor:grabbing}
+#world{position:absolute;left:0;top:0;transform-origin:0 0}
+#links{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none}
+#cards,#labels{position:absolute;left:0;top:0}
+
+.card{position:absolute;left:0;top:0;width:240px;min-height:170px;padding:12px 14px 14px;box-sizing:border-box;
+  background:var(--n-yellow);color:var(--note-ink);box-shadow:var(--shadow-note);border-radius:2px;
+  display:flex;flex-direction:column;gap:6px;cursor:grab;user-select:none}
+.card[data-c="pink"]{background:var(--n-pink)} .card[data-c="blue"]{background:var(--n-blue)}
+.card[data-c="green"]{background:var(--n-green)} .card[data-c="orange"]{background:var(--n-orange)} .card[data-c="purple"]{background:var(--n-purple)}
+.card.sel{outline:2px solid var(--accent);outline-offset:3px}
+.card.drop{outline:2px dashed var(--accent);outline-offset:3px}
+.card.dragging{cursor:grabbing;box-shadow:0 12px 28px rgba(0,0,0,.22)}
+.c-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.c-num{font-family:var(--f-slug);font-weight:700;font-size:22px;line-height:1}
+.c-tags{display:flex;gap:4px}
+.c-tag{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--note-muted);border:1px solid var(--note-line);padding:1px 6px;border-radius:8px}
+.c-slug{font-family:var(--f-slug);font-weight:700;font-size:13.5px;text-transform:uppercase;letter-spacing:.02em;line-height:1.3;
+  padding-bottom:6px;border-bottom:1px solid var(--note-line);overflow-wrap:anywhere}
+.c-body{font-size:13px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;overflow:hidden}
+.ph{color:var(--note-muted);font-style:italic;text-transform:none;font-weight:400}
+.handle{position:absolute;right:-11px;top:50%;width:22px;height:22px;margin-top:-11px;border-radius:50%;
+  border:2px solid var(--panel);background:var(--accent);color:var(--accent-ink);font-size:14px;line-height:16px;padding:0;
+  opacity:0;transition:opacity .12s,transform .12s;cursor:crosshair;box-shadow:var(--shadow)}
+.card:hover .handle,.card.sel .handle{opacity:1}
+.handle:hover{transform:scale(1.15)}
+@media (hover:none){.handle{opacity:.9}}
+
+.lk{fill:none;stroke-width:2.2}
+.lk.t-therefore{stroke:var(--therefore)} .lk.t-because{stroke:var(--because);stroke-dasharray:8 5} .lk.t-but{stroke:var(--but);stroke-dasharray:2 5;stroke-linecap:round}
+.lk.on{stroke-width:3.6}
+.lk.temp{stroke:var(--accent);stroke-dasharray:4 4;opacity:.8}
+.mk-therefore{fill:var(--therefore)} .mk-because{fill:var(--because)} .mk-but{fill:var(--but)} .mk-temp{fill:var(--accent)}
+.lbl{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font-size:11px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;padding:3px 9px;border-radius:12px;background:var(--panel);border:1.5px solid currentColor;box-shadow:var(--shadow)}
+.lbl.t-therefore{color:var(--therefore)} .lbl.t-because{color:var(--because)} .lbl.t-but{color:var(--but)}
+.lbl.on{background:currentColor}.lbl.on span{color:var(--panel)}
+
+/* ---------- islands ---------- */
+.island{position:fixed;background:var(--panel);box-shadow:var(--shadow);border-radius:10px;display:flex;align-items:center;gap:2px;padding:4px;z-index:5}
+.ib{border:0;background:transparent;border-radius:7px;padding:7px 10px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.ib:hover{background:var(--hover)}
+.ib.on{background:var(--hover);color:var(--accent)}
+.ib svg{width:18px;height:18px;flex:none}
+.sep{width:1px;align-self:stretch;background:var(--rule);margin:4px 3px}
+.top{top:calc(12px + env(safe-area-inset-top,0px))}
+
+#isProj{left:max(16px,env(safe-area-inset-left,0px));padding:4px 4px 4px 8px;max-width:calc(50% - 140px);min-width:0}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-slug);font-weight:700;font-size:13px;flex:none}
+#projBtn{font-weight:600;font-size:14px;min-width:0;max-width:240px}
+#projBtn .pn{overflow:hidden;text-overflow:ellipsis}
+.vchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 8px;border-radius:12px;background:var(--hover)}
+.vdot{width:10px;height:10px;border-radius:50%;border:1px solid rgba(0,0,0,.18);flex:none;display:inline-block}
+.caret{font-size:10px;color:var(--muted)}
+
+#isTabs{left:50%;transform:translateX(-50%)}
+#isTabs .ib{padding:7px 14px}
+#isTabs .ib.on{background:var(--accent);color:var(--accent-ink)}
+#isActions{right:max(16px,env(safe-area-inset-right,0px))}
+
+#isTools{left:max(16px,env(safe-area-inset-left,0px));top:50%;transform:translateY(-50%);flex-direction:column;padding:6px;gap:4px}
+#isTools .ib{flex-direction:column;gap:2px;font-size:10.5px;padding:7px 6px;min-width:62px}
+#isTools .sep{width:auto;height:1px;margin:3px 4px}
+.tdot{width:18px;height:4px;border-radius:2px;background:currentColor}
+.ib.ty.t-therefore{color:var(--therefore)} .ib.ty.t-because{color:var(--because)} .ib.ty.t-but{color:var(--but)}
+.ib.ty{opacity:.55}.ib.ty.on{opacity:1;background:var(--hover);box-shadow:inset 0 0 0 1.5px currentColor}
+.tcap{font-size:10px;color:var(--muted);text-align:center;padding:0 2px}
+#isZoom{right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+#zoomVal{min-width:46px;text-align:center;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--muted)}
+#isLegend{left:max(16px,env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));padding:6px 12px;gap:10px;font-size:12px;color:var(--muted);flex-wrap:wrap;max-width:calc(100% - 260px)}
+#isLegend span{display:inline-flex;align-items:center;gap:5px}
+#isLegend b{color:var(--ink);font-weight:600}
+
+/* ---------- project manager ---------- */
+#pm{position:fixed;z-index:8;top:calc(62px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));width:340px;max-width:calc(100% - 32px);
+  max-height:calc(100% - 90px);overflow:auto;background:var(--panel);border-radius:12px;box-shadow:var(--shadow);padding:14px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px}
+.pm-sec{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tree{display:flex;flex-direction:column;gap:4px}
+.tp{border:1px solid var(--rule);border-radius:9px;padding:4px}
+.tp.cur{border-color:var(--accent)}
+.tp-h{display:flex;width:100%;justify-content:space-between;align-items:center;border:0;background:transparent;padding:7px 8px;border-radius:6px;font-weight:600;font-size:13.5px;text-align:left;gap:8px}
+.tp-h:hover{background:var(--hover)}
+.tp-h span:first-child{min-width:0;overflow-wrap:anywhere}
+.tv{display:flex;width:100%;align-items:center;gap:8px;border:0;background:transparent;padding:6px 8px 6px 18px;border-radius:6px;font-size:13px;text-align:left}
+.tv:hover{background:var(--hover)}
+.tv.on{background:var(--hover);color:var(--accent);font-weight:600}
+.tv .muted{margin-left:auto;font-variant-numeric:tabular-nums}
+.tv .nt{color:var(--muted);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+
+/* ---------- side panels ---------- */
+.side{position:fixed;z-index:6;top:calc(64px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));
+  width:330px;max-height:calc(100% - 140px);overflow:auto;background:var(--panel);border-radius:12px;box-shadow:var(--shadow);padding:16px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+.side h2{font-size:13px;margin:0;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.x{border:0;background:transparent;font-size:20px;line-height:1;padding:2px 6px;border-radius:6px;color:var(--muted)}
+.x:hover{background:var(--hover)}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld label{font-size:11.5px;font-weight:500;color:var(--muted)}
+.fld input,.fld textarea,.fld select,.inp{font:inherit;font-size:14px;color:var(--ink);background:var(--field);border:1px solid var(--rule);border-radius:7px;padding:8px 10px;width:100%;box-sizing:border-box}
+#fNum{font-family:var(--f-slug);font-weight:700;width:90px}
+#fHead{font-family:var(--f-slug);font-weight:700;text-transform:uppercase}
+#fBody,#cDesc{min-height:130px;resize:vertical;line-height:1.45}
+.conns{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.conn{display:flex;gap:8px;align-items:baseline;line-height:1.35}
+.conn b{font-size:10.5px;letter-spacing:.08em;flex:none}
+.conn b.t-therefore{color:var(--therefore)} .conn b.t-because{color:var(--because)} .conn b.t-but{color:var(--but)}
+.conn span{min-width:0;overflow-wrap:anywhere}
+.muted{color:var(--muted);font-size:12.5px}
+.btn{border:1px solid var(--rule);background:var(--panel);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:500}
+.btn:hover{background:var(--hover)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--but);border-color:currentColor}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fl-item{display:flex;flex-direction:column;gap:3px;padding:10px;border-radius:8px;border:1px solid var(--rule);cursor:pointer;text-align:left;background:transparent}
+.fl-item:hover{background:var(--hover)}
+.fl-h{display:flex;gap:8px;align-items:baseline;font-family:var(--f-slug);font-weight:700;font-size:13px;text-transform:uppercase}
+.fl-b{font-size:12.5px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fl-l{font-size:12px;display:flex;flex-wrap:wrap;gap:4px 10px}
+.warn{color:var(--but);font-size:11px;font-weight:600;letter-spacing:.04em}
+#pop{position:fixed;z-index:7;background:var(--panel);border-radius:10px;box-shadow:var(--shadow);padding:4px;display:flex;gap:2px;flex-wrap:wrap;transform:translate(-50%,calc(-100% - 14px))}
+#pop .ib.t-therefore{color:var(--therefore)} #pop .ib.t-because{color:var(--because)} #pop .ib.t-but{color:var(--but)}
+
+/* ---------- pages: story & characters ---------- */
+.page{position:fixed;inset:0;overflow:auto;background:var(--bg);z-index:3;
+  padding-top:calc(84px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));box-sizing:border-box}
+.ms{max-width:760px;margin:0 auto;background:var(--panel);box-shadow:var(--shadow);border-radius:4px;padding:48px clamp(20px,6vw,72px) 56px;box-sizing:border-box;display:flex;flex-direction:column;gap:22px}
+.ms .eyebrow{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ms h1{margin:0;font-family:var(--f-slug);font-size:clamp(24px,4vw,32px);text-transform:uppercase;letter-spacing:.02em;text-wrap:balance}
+.ms label{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ms textarea{font-family:var(--f-read);color:var(--ink);background:transparent;border:0;border-radius:4px;padding:6px 8px;margin:0 -8px;resize:none;width:calc(100% + 16px);box-sizing:border-box;overflow:hidden}
+.ms textarea:hover{background:var(--field)}
+.ms textarea:focus{background:var(--field);outline:none;box-shadow:inset 0 0 0 1px var(--rule)}
+#sLog{font-size:19px;line-height:1.55;font-style:italic}
+#sStory{font-size:17px;line-height:1.75;min-height:320px}
+.stats{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:14px;flex-wrap:wrap;border-top:1px solid var(--rule);padding-top:12px}
+
+.cwrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.chead{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.chead h1{margin:0;font-size:22px}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
+.ccard{background:var(--panel);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;cursor:pointer;border:2px solid transparent;text-align:left;padding:0}
+.ccard:hover{border-color:var(--rule)}
+.ccard.sel{border-color:var(--accent)}
+.cimg{aspect-ratio:4/3;width:100%;max-width:100%;background:var(--hover);display:grid;place-items:center;overflow:hidden}
+.cimg img{width:100%;height:100%;object-fit:cover;display:block}
+.cini{font-family:var(--f-slug);font-weight:700;font-size:34px;color:var(--muted)}
+.cinfo{padding:12px 14px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.cname{font-weight:600;font-size:15.5px}
+.cmeta{font-size:12.5px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:11.5px;padding:2px 8px;border-radius:10px;background:var(--hover)}
+.cdesc{font-size:13px;line-height:1.45;color:var(--ink);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.role{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.cprev{aspect-ratio:4/3;max-width:100%;border-radius:8px;background:var(--hover);display:grid;place-items:center;overflow:hidden}
+.cprev img{width:100%;height:100%;object-fit:cover}
+
+/* ---------- modal / toast ---------- */
+#modal{position:fixed;inset:0;z-index:9;background:rgba(10,14,20,.42);display:grid;place-items:center;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.mbox{background:var(--panel);border-radius:14px;box-shadow:var(--shadow);padding:20px;width:min(560px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:12px;max-height:85vh;overflow:auto}
+.mbox h3{margin:0;font-size:17px}
+.mbox p{margin:0;font-size:13.5px;line-height:1.5;color:var(--muted)}
+.mbox textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;height:200px;width:100%;box-sizing:border-box;background:var(--field);color:var(--ink);border:1px solid var(--rule);border-radius:8px;padding:10px;resize:vertical}
+.opt{display:flex;gap:10px;align-items:flex-start;font-size:13.5px}
+#toast{position:fixed;left:50%;top:calc(70px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:10;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
+
+@media (max-width:900px){
+  .ib .tx{display:none}
+  #isTabs{top:calc(62px + env(safe-area-inset-top,0px))}
+  #isProj{max-width:calc(100% - 210px)}
+  #projBtn{max-width:150px}
+  .page{padding-top:calc(124px + env(safe-area-inset-top,0px))}
+  .side,#pm{top:calc(112px + env(safe-area-inset-top,0px))}
+  #isLegend{display:none}
+}
+@media (max-width:640px){
+  #isTools{top:auto;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:none;flex-direction:row}
+  #isTools .sep{width:1px;height:auto;margin:4px 3px}
+  #isTools .ib{min-width:0;padding:6px 7px}
+  #isTools .tcap{display:none}
+  #isZoom{bottom:calc(80px + env(safe-area-inset-bottom,0px))}
+  .side{left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));top:auto;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:auto;max-height:62%}
+  .ms{padding:28px 18px 36px}
+  .grid2{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ================= BOARD ================= -->
+<main id="viewport" aria-label="Szenen-Canvas">
+  <div id="world">
+    <svg id="links" aria-hidden="true">
+      <defs>
+        <marker id="ar-therefore" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-therefore" d="M0 0L10 5L0 10z"/></marker>
+        <marker id="ar-because" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-because" d="M0 0L10 5L0 10z"/></marker>
+        <marker id="ar-but" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-but" d="M0 0L10 5L0 10z"/></marker>
+        <marker id="ar-temp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-temp" d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <g id="linkG"></g>
+    </svg>
+    <div id="cards"></div>
+    <div id="labels"></div>
+  </div>
+</main>
+
+<div class="island" id="isTools" role="toolbar" aria-label="Werkzeuge" data-view="board">
+  <button class="ib" id="btnAdd" title="Neue Szene (N)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5"/></svg>Szene</button>
+  <span class="sep"></span>
+  <div class="tcap">Pfeil-Typ</div>
+  <button class="ib ty t-therefore on" data-type="therefore" title="Neue Verbindungen: therefore"><span class="tdot"></span>therefore</button>
+  <button class="ib ty t-because" data-type="because" title="Neue Verbindungen: because"><span class="tdot"></span>because</button>
+  <button class="ib ty t-but" data-type="but" title="Neue Verbindungen: but"><span class="tdot"></span>but</button>
+</div>
+<div class="island" id="isZoom" data-view="board">
+  <button class="ib" id="btnZoomOut" aria-label="Verkleinern">−</button>
+  <span id="zoomVal">100%</span>
+  <button class="ib" id="btnZoomIn" aria-label="Vergrößern">+</button>
+  <span class="sep"></span>
+  <button class="ib" id="btnFit" title="Alles zeigen" aria-label="Alles zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+</div>
+<div class="island" id="isLegend" data-view="board" aria-label="Farben nach Version"></div>
+
+<!-- ================= STORY ================= -->
+<section class="page" id="storyView" hidden aria-label="Hauptstory">
+  <article class="ms">
+    <div class="eyebrow"><span id="sProj"></span><span class="vchip" id="sVer"></span></div>
+    <h1>Hauptstory</h1>
+    <div class="fld"><label for="sLog">Logline</label><textarea id="sLog" rows="2" placeholder="In ein, zwei Sätzen: Wer will was, was steht im Weg, was steht auf dem Spiel?"></textarea></div>
+    <div class="fld"><label for="sStory">Geschichte als Fließtext</label><textarea id="sStory" placeholder="Erzähl die ganze Geschichte von Anfang bis Ende, so wie du sie jemandem am Tisch erzählen würdest."></textarea></div>
+    <div class="stats" id="sStats"></div>
+  </article>
+</section>
+
+<!-- ================= CHARACTERS ================= -->
+<section class="page" id="charView" hidden aria-label="Figuren">
+  <div class="cwrap">
+    <div class="chead">
+      <div><div class="muted" id="cSub"></div><h1>Figuren</h1></div>
+      <button class="btn pri" id="btnAddChar">+ Figur anlegen</button>
+    </div>
+    <div class="cgrid" id="cGrid"></div>
+  </div>
+</section>
+
+<!-- ================= TOP MENU ================= -->
+<div class="island top" id="isProj">
+  <span class="logo" aria-hidden="true">Sz</span>
+  <button class="ib" id="projBtn" aria-haspopup="true" aria-expanded="false" title="Projekte und Versionen">
+    <span class="pn" id="projName"></span><span class="vchip" id="verChip"></span><span class="caret">▾</span>
+  </button>
+</div>
+<nav class="island top" id="isTabs" aria-label="Bereiche">
+  <button class="ib" data-go="story">Story</button>
+  <button class="ib" data-go="board">Szenenboard</button>
+  <button class="ib" data-go="chars">Figuren</button>
+</nav>
+<div class="island top" id="isActions">
+  <button class="ib" id="btnFlow" data-view="board" title="Szenen in Reihenfolge lesen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h13"/></svg><span class="tx">Ablauf</span></button>
+  <button class="ib" id="btnRenum" data-view="board" title="Nummern nach Position vergeben (links nach rechts)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 7h2v10M15 7h4l-4 5h4v5h-4"/></svg><span class="tx">Nummerieren</span></button>
+  <span class="sep" data-view="board"></span>
+  <button class="ib" id="btnPdf" title="PDF für den Drehbuchstart erzeugen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg><span class="tx">PDF</span></button>
+  <button class="ib" id="btnExport" title="Projekt als JSON sichern"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span class="tx">Sichern</span></button>
+  <button class="ib" id="btnImport" title="Gesichertes Projekt laden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15V4M7 9l5-5 5 5M5 20h14"/></svg><span class="tx">Laden</span></button>
+</div>
+
+<div id="pm" hidden role="dialog" aria-label="Projekte und Versionen"></div>
+
+<aside class="side" id="panel" hidden aria-label="Szene bearbeiten">
+  <h2>Szene <button class="x" id="panelClose" aria-label="Schließen">×</button></h2>
+  <div class="row">
+    <div class="fld"><label for="fNum">Nummer</label><input id="fNum"></div>
+    <div class="fld" style="flex:1"><label>Version</label><div class="muted" id="fVer"></div></div>
+  </div>
+  <div class="fld"><label for="fHead">Überschrift</label><input id="fHead" placeholder="INT. KÜCHE – NACHT"></div>
+  <div class="fld"><label for="fBody">Szeneninhalt</label><textarea id="fBody" placeholder="Was passiert? Was will die Figur, was steht im Weg?"></textarea></div>
+  <div class="fld"><label>Verbindungen</label><div class="conns" id="conns"></div></div>
+  <div class="row"><button class="btn danger" id="btnDelScene">Szene löschen</button></div>
+</aside>
+
+<aside class="side" id="flow" hidden aria-label="Ablauf">
+  <h2>Ablauf <button class="x" id="flowClose" aria-label="Schließen">×</button></h2>
+  <div class="muted">Szenen nach Nummer. Jede Szene sollte mit „therefore“ oder „but“ an die nächste anschließen, nie mit „und dann“.</div>
+  <div id="flowList" class="conns"></div>
+</aside>
+
+<aside class="side" id="charPanel" hidden aria-label="Figur bearbeiten">
+  <h2>Figur <button class="x" id="charClose" aria-label="Schließen">×</button></h2>
+  <div class="cprev" id="cPrev"></div>
+  <div class="row"><button class="btn" id="cPick">Bild wählen</button><button class="btn" id="cRmImg">Bild entfernen</button><input type="file" id="cFile" accept="image/*" hidden></div>
+  <div class="fld"><label for="cName">Name</label><input id="cName"></div>
+  <div class="grid2">
+    <div class="fld"><label for="cAge">Alter</label><input id="cAge" placeholder="z. B. 52 oder um die 50"></div>
+    <div class="fld"><label for="cGender">Geschlecht</label><select id="cGender"><option value="">–</option><option>weiblich</option><option>männlich</option><option>divers</option></select></div>
+  </div>
+  <div class="fld"><label for="cRole">Rolle</label><select id="cRole"><option value="">–</option><option>Hauptfigur</option><option>Gegenspieler</option><option>Nebenfigur</option><option>Ensemble</option></select></div>
+  <div class="fld"><label for="cTraits">Charaktereigenschaften (mit Komma trennen)</label><input id="cTraits" placeholder="ehrgeizig, kontrolliert, witzig"></div>
+  <div class="fld"><label for="cDesc">Beschreibung, Ziel, innerer Konflikt</label><textarea id="cDesc"></textarea></div>
+  <div class="fld"><label>Kommt vor in</label><div class="muted" id="cScenes"></div></div>
+  <div class="row"><button class="btn danger" id="cDel">Figur löschen</button></div>
+</aside>
+
+<div id="pop" hidden>
+  <button class="ib t-therefore" data-set="therefore">therefore</button>
+  <button class="ib t-because" data-set="because">because</button>
+  <button class="ib t-but" data-set="but">but</button>
+  <span class="sep"></span>
+  <button class="ib" data-act="flip" title="Richtung umkehren">⇄</button>
+  <button class="ib" data-act="del" title="Verbindung löschen">Löschen</button>
+</div>
+
+<div id="modal" hidden><div class="mbox" id="mbox"></div></div>
+<div id="toast" hidden></div>
+
+<script>
+(() => {
+const KEY = 'szenenboard.v2', OLD_KEY = 'szenenboard.v1';
+const TYPES = ['therefore', 'because', 'but'];
+const VCOL = ['yellow', 'pink', 'blue', 'green', 'orange', 'purple'];
+const VNAME = { yellow: 'Gelb', pink: 'Rosa', blue: 'Blau', green: 'Grün', orange: 'Orange', purple: 'Lila' };
+const vcol = n => VCOL[(Math.max(1, n) - 1) % VCOL.length];
+const $ = s => document.querySelector(s);
+const vp = $('#viewport'), world = $('#world'), cardsEl = $('#cards'), labelsEl = $('#labels'), linkG = $('#linkG');
+const uid = () => Math.random().toString(36).slice(2, 10);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => new Date().toISOString().slice(0, 10);
+const fmtDate = d => { const [y, m, t] = String(d || '').split('-'); return t ? `${t}.${m}.${y}` : ''; };
+const vdot = n => `<span class="vdot" style="background:var(--n-${vcol(n)})"></span>`;
+
+/* ================= seed: Die Glamper ================= */
+function glamper() {
+  const sc = (num, heading, content, x, y) => ({ id: 'g' + num, num: String(num), heading, content, x, y, v: 1 });
+  const T = 60, B = 440;
+  const scenes = [
+    sc(1, 'INT. WOHNUNG CLAUDIA & MARTIN, DEUTSCHLAND – ABEND', 'Claudia und Martin führen ihre Ehe wie ein Unternehmen: Es wird nicht gestritten, es wird sachlich verhandelt. Eine Diskussion wird doch emotional. Die logische, wirtschaftliche Lösung liegt auf dem Tisch: Trennung.', 0, T),
+    sc(2, 'INT. BÜRO – TAG', 'Ein geschiedener Kollege rät Martin, endlich einmal zu leben.', 360, T),
+    sc(3, 'EXT. WOHNMOBILHÄNDLER – TAG', 'Ein schmieriger Händler vermietet ihnen einen Luxus-Camper. Der hätte nur abgestellt werden sollen: Darin sind Kokain und Gras versteckt. Das Paar flüchtet vor seiner Entscheidung nach Vorarlberg.', 720, T),
+    sc(4, 'INT. AUTO DER DEALER – TAG', 'Vater und Sohn, die eigentlichen Abholer, merken, dass der Camper weg ist. Als Angler getarnt nehmen sie die Spur auf.', 900, B),
+    sc(5, 'EXT. CAMPINGPLATZ VORARLBERG – TAG', 'Statt Glamping: ein Campingplatz voller Menschen, die ganz anders leben. Dauercamper mit Dialekt, Hippies mit VW-Bus, zwei Dauerbetrunkene, Nachbarn mit Fäkalienkassette.', 1260, T),
+    sc(6, 'EXT. CAMPINGPLATZ – TAG', 'Jugendliche verspotten das Paar und nennen sie „wie Eltern“. Das trifft, denn Kinder haben die beiden immer auf später verschoben.', 1620, T),
+    sc(7, 'EXT. NACHBARPARZELLE – ABEND', 'Die netten Angler vom Nachbarplatz werden Freunde und geben dem Paar sogar Beziehungstipps. Das Publikum weiß, wer sie sind, das Paar nicht.', 1800, B),
+    sc(8, 'EXT. LAGERFEUER – NACHT', 'Claudia und Martin lernen Feuer machen, reden mit anderen über den Partner und haben schließlich ihren ersten echten Streit. Furchtbar und befreiend.', 2160, T),
+    sc(9, 'EXT. AUSFLUG MIT DEN JUGENDLICHEN – TAG', 'An einem getauschten Ausflugstag mit den Jugendlichen sehen sie ihre Ehe mit neuen Augen.', 2520, T),
+    sc(10, 'INT. CAMPER – TAG', 'Die Dealer durchsuchen heimlich den Camper und stellen fest: Ein Paket fehlt.', 2700, B),
+    sc(11, 'EXT. SEE / BOOT – TAG', 'Bootsausflug. Die Dealer wollen Martin aushorchen, er hält das Ganze für ein absurdes Männerritual.', 3060, B),
+    sc(12, 'INT. CAMPER – NACHT', 'Die Jugendlichen finden im Camper statt Mehl weißes Pulver. Es folgt die wildeste Nacht im Leben des Paares.', 3240, T),
+    sc(13, 'EXT. CAMPINGPLATZ – NACHT', 'Die Tarnung fällt. Claudia und Martin stellen sich mit dem ganzen Campingplatz den Dealern, mit allem, was sie hier gelernt haben. Als sie die Jugendlichen beschützen, rufen sie: „Das sind unsere Kinder!“ Und meinen es so.', 3600, T),
+    sc(14, 'INT. EIGENHEIM, DEUTSCHLAND – TAG', 'Claudia und Martin entscheiden sich, zu fühlen statt zu rechnen. Das Eigenheim, früher kühl und symmetrisch, wirkt jetzt warm und einladend.', 3960, T),
+    sc(15, 'EXT. WOHNMOBILHÄNDLER – TAG', 'Der Camper geht zurück an einen Händler mit blauen Flecken im Gesicht.', 3960, B)
+  ];
+  const L = (f, t, type) => ({ id: `l${f}-${t}`, from: 'g' + f, to: 'g' + t, type });
+  const links = [L(1, 2, 'but'), L(2, 3, 'therefore'), L(3, 4, 'therefore'), L(3, 5, 'but'), L(5, 6, 'therefore'), L(4, 7, 'therefore'),
+    L(7, 8, 'therefore'), L(8, 9, 'therefore'), L(7, 10, 'therefore'), L(10, 11, 'therefore'), L(11, 12, 'but'), L(12, 10, 'because'),
+    L(12, 13, 'therefore'), L(13, 14, 'therefore'), L(13, 15, 'therefore')];
+  const ch = (name, age, gender, role, traits, desc) => ({ id: uid(), name, age, gender, role, traits, desc, image: '' });
+  const characters = [
+    ch('Claudia', 'um die 50', 'weiblich', 'Hauptfigur', 'erfolgreich, lösungsorientiert, kontrolliert', 'Aus Deutschland. Führt die Ehe mit Martin wie ein Verfahren und bricht ab, sobald es emotional wird. Muss lernen, zu fühlen statt zu rechnen. (Arbeitsname)'),
+    ch('Martin', 'um die 50', 'männlich', 'Hauptfigur', 'erfolgreich, lösungsorientiert, kontrolliert', 'Aus Deutschland. Hört auf den Rat, endlich einmal zu leben, und mietet den Camper. Muss lernen, zu fühlen statt zu rechnen. (Arbeitsname)'),
+    ch('Der Vater', '', 'männlich', 'Gegenspieler', 'ruhig, kennt die Regeln', 'Drogenkurier, getarnt als harmloser Angler. Gibt dem Paar ausgerechnet Beziehungstipps.'),
+    ch('Der Sohn', '', 'männlich', 'Gegenspieler', 'ungeduldig, will abkürzen', 'Drogenkurier mit seinem Vater, getarnt als Angler.'),
+    ch('Der Wohnmobilhändler', '', 'männlich', 'Nebenfigur', 'schmierig, geldgierig, ahnungslos', 'Wollte nur nebenbei ein paar Euro verdienen. Am Ende hat er blaue Flecken im Gesicht.'),
+    ch('Der geschiedene Kollege', '', 'männlich', 'Nebenfigur', '', 'Rät Martin, endlich einmal zu leben, und stößt damit die Flucht an.'),
+    ch('Die Jugendlichen', '', '', 'Ensemble', 'frech, spöttisch', 'Erst verspotten sie das Paar als „wie Eltern“, am Ende sind sie die Kinder, die es beschützt.'),
+    ch('Der Campingplatz', '', '', 'Ensemble', 'grantig, laut, herzlich', 'Ein grantiges Dauercamper-Paar mit Vorarlberger Dialekt, Hippies mit VW-Bus, zwei Dauerbetrunkene und Nachbarn mit Fäkalienkassette. Zusammen werden sie zur Gemeinschaft, die das Paar rettet.')
+  ];
+  const story = [
+    'Akt 1: Die vernünftige Lösung',
+    'Claudia und Martin, beide um die fünfzig, haben alles erreicht. Ihre Ehe führen sie wie ein Unternehmen: Gestritten wird nicht, es wird sachlich verhandelt. Als eine Diskussion doch emotional wird, liegt die logische, wirtschaftliche Lösung auf dem Tisch. Sie sollten sich trennen, damit jeder herausfindet, was ihm wichtig ist. Doch Martin hört von einem geschiedenen Kollegen, er solle endlich einmal leben. Ein schmieriger Händler vermietet ihm einen Luxus-Camper, und die beiden flüchten vor ihrer Entscheidung nach Vorarlberg. Was sie nicht wissen: Der Camper hätte beim Händler nur abgestellt werden sollen, und in ihm sind Kokain und Gras versteckt. Seine eigentlichen Abholer, Vater und Sohn, machen sich als Angler getarnt auf den Weg.',
+    '', 'Akt 2: Das Gegenteil von Glamping',
+    'Statt Luxus wartet ein Campingplatz voller Menschen, die ganz anders leben: Dauercamper, Hippies, Jugendliche, die das Paar spöttisch „wie Eltern“ nennen. Das trifft, denn Kinder haben die beiden immer auf später verschoben. Die netten Angler vom Nachbarplatz werden Freunde und geben sogar Beziehungstipps. Das Publikum weiß, wer sie sind, das Paar nicht. Claudia und Martin lernen Feuer machen, reden mit anderen über den Partner und haben schließlich ihren ersten echten Streit, furchtbar und befreiend. An einem getauschten Ausflugstag mit den Jugendlichen sehen sie ihre Ehe mit neuen Augen. Derweil durchsuchen die Dealer den Camper und stellen fest: Ein Paket fehlt.',
+    '', 'Akt 3: Das sind unsere Kinder',
+    'Ein Bootsausflug, bei dem die Dealer Martin aushorchen wollen, hält er für ein absurdes Männerritual. Dann finden die Jugendlichen im Camper statt Mehl weißes Pulver, und es folgt die wildeste Nacht im Leben des Paares. Als die Tarnung fällt, stellen sich Claudia und Martin gemeinsam mit dem ganzen Campingplatz den Dealern, mit allem, was sie hier gelernt haben. Als sie die Jugendlichen beschützen, rufen sie: „Das sind unsere Kinder!“ Und meinen es so.',
+    '', 'Ende',
+    'Claudia und Martin entscheiden sich, zu fühlen statt zu rechnen. Sie erkennen, dass der Wert des Lebens in den Menschen liegt, mit denen man Zeit verbringt, und in Momenten, die man gemeinsam erlebt, nicht im Büro. Der Camper geht zurück an einen Händler mit blauen Flecken im Gesicht.'
+  ].join('\n');
+  const logline = 'Ein deutsches Karriere-Ehepaar steht vor der vernünftigsten Entscheidung seines Lebens, der Trennung, und läuft davon. Ein gemieteter Luxus-Camper bringt die beiden auf einen Vorarlberger Campingplatz voller Menschen, die ganz anders leben als sie. Mit dabei: zwei freundliche Angler, die etwas suchen, das im Camper versteckt ist.';
+  const p = mkProject('Die Glamper', { logline, story, scenes, links, characters, view: null });
+  p.versions[0].note = 'Aus dem Treatment übernommen';
+  return p;
+}
+
+/* ================= store ================= */
+function emptyData() { return { logline: '', story: '', scenes: [], links: [], characters: [], view: null }; }
+function mkProject(name, data) {
+  const vid = uid();
+  return { id: uid(), name, activeVersion: vid, versions: [{ id: vid, n: 1, created: today(), note: '', data: normData(data || emptyData()) }] };
+}
+function normData(d) {
+  d = d || {};
+  const ids = new Set();
+  const scenes = (Array.isArray(d.scenes) ? d.scenes : []).map((s, i) => {
+    const id = String(s.id || uid()); ids.add(id);
+    return { id, num: String(s.num ?? i + 1), heading: String(s.heading ?? ''), content: String(s.content ?? ''),
+      x: Number(s.x) || 0, y: Number(s.y) || 0, v: Math.max(1, parseInt(s.v, 10) || 1) };
+  });
+  const links = (Array.isArray(d.links) ? d.links : []).filter(l => ids.has(String(l.from)) && ids.has(String(l.to)))
+    .map(l => ({ id: String(l.id || uid()), from: String(l.from), to: String(l.to), type: TYPES.includes(l.type) ? l.type : 'therefore' }));
+  const characters = (Array.isArray(d.characters) ? d.characters : []).map(c => ({
+    id: String(c.id || uid()), name: String(c.name ?? ''), age: String(c.age ?? ''), gender: String(c.gender ?? ''), role: String(c.role ?? ''),
+    traits: String(c.traits ?? ''), desc: String(c.desc ?? ''), image: typeof c.image === 'string' && c.image.startsWith('data:image/') ? c.image : '' }));
+  const view = d.view && isFinite(d.view.z) ? { x: +d.view.x || 0, y: +d.view.y || 0, z: +d.view.z || 1 } : null;
+  return { logline: String(d.logline ?? ''), story: String(d.story ?? ''), scenes, links, characters, view };
+}
+function normProject(p) {
+  const versions = (Array.isArray(p.versions) ? p.versions : []).map((v, i) => ({ id: String(v.id || uid()), n: parseInt(v.n, 10) || i + 1,
+    created: String(v.created || today()), note: String(v.note ?? ''), data: normData(v.data) }));
+  if (!versions.length) return mkProject(String(p.name || 'Projekt'));
+  const av = versions.some(v => v.id === p.activeVersion) ? p.activeVersion : versions[versions.length - 1].id;
+  return { id: String(p.id || uid()), name: String(p.name || 'Projekt'), activeVersion: av, versions };
+}
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s && Array.isArray(s.projects) && s.projects.length) {
+        const projects = s.projects.map(normProject);
+        return { projects, active: projects.some(p => p.id === s.active) ? s.active : projects[0].id, tab: ['story', 'board', 'chars'].includes(s.tab) ? s.tab : 'board' };
+      }
+    }
+  } catch (e) {}
+  const projects = [glamper()];
+  try { // carry over a board from the first preview, unless it was only the example
+    const old = JSON.parse(localStorage.getItem(OLD_KEY) || 'null');
+    if (old && Array.isArray(old.scenes) && old.scenes.length && !/^Beispiel/.test(old.title || '')) projects.push(mkProject(old.title || 'Mein Drehbuch', old));
+  } catch (e) {}
+  return { projects, active: projects[0].id, tab: 'board', fresh: true };
+}
+const store = loadStore();
+let saveT, warnedFull = false;
+function save() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    try { localStorage.setItem(KEY, JSON.stringify({ projects: store.projects, active: store.active, tab: store.tab })); }
+    catch (e) { if (!warnedFull) { warnedFull = true; toast('Browserspeicher voll. Bitte „Sichern“ nutzen und große Bilder entfernen.'); } }
+  }, 300);
+}
+const P = () => store.projects.find(p => p.id === store.active) || store.projects[0];
+const V = () => { const p = P(); return p.versions.find(v => v.id === p.activeVersion) || p.versions[p.versions.length - 1]; };
+const D = () => V().data;
+const sceneById = id => D().scenes.find(s => s.id === id);
+
+let view = { x: 120, y: 110, z: 0.8 };
+let sel = null, charSel = null, newType = 'therefore';
+
+/* ================= tabs & header ================= */
+function setTab(t) {
+  store.tab = t; save();
+  document.querySelectorAll('#isTabs .ib').forEach(b => b.classList.toggle('on', b.dataset.go === t));
+  document.querySelectorAll('[data-view="board"]').forEach(el => el.hidden = t !== 'board');
+  $('#storyView').hidden = t !== 'story';
+  $('#charView').hidden = t !== 'chars';
+  if (t !== 'board') { $('#panel').hidden = true; $('#flow').hidden = true; $('#btnFlow').classList.remove('on'); hidePop(); }
+  if (t !== 'chars') $('#charPanel').hidden = true;
+  if (t === 'story') renderStory();
+  if (t === 'chars') renderChars();
+  if (t === 'board') { render(); applyView(); }
+}
+document.querySelectorAll('#isTabs .ib').forEach(b => b.onclick = () => setTab(b.dataset.go));
+function renderHeader() {
+  const v = V();
+  $('#projName').textContent = P().name;
+  $('#verChip').innerHTML = `${vdot(v.n)}V${v.n}`;
+  const p = P();
+  $('#isLegend').innerHTML = '<b>Farbe = Version</b>' + p.versions.map(x => x.n).sort((a, b) => a - b).map(n => `<span>${vdot(n)}V${n} ${VNAME[vcol(n)]}</span>`).join('');
+}
+function switchTo(pid, vid) {
+  store.active = pid; const p = P(); if (vid) p.activeVersion = vid;
+  sel = null; charSel = null; closePM();
+  const d = D(), hadView = !!d.view;
+  if (hadView) view = { ...d.view };
+  renderHeader(); setTab(store.tab); save();
+  if (!hadView) requestAnimationFrame(fit);
+}
+
+/* ================= project manager ================= */
+function openPM() { renderPM(); $('#pm').hidden = false; $('#projBtn').setAttribute('aria-expanded', 'true'); }
+function closePM() { $('#pm').hidden = true; $('#projBtn').setAttribute('aria-expanded', 'false'); }
+$('#projBtn').onclick = e => { e.stopPropagation(); $('#pm').hidden ? openPM() : closePM(); };
+document.addEventListener('pointerdown', e => { if (!$('#pm').hidden && !e.target.closest('#pm') && !e.target.closest('#isProj')) closePM(); });
+function renderPM(confirm) {
+  const p = P(), v = V();
+  const tree = store.projects.map(pr => `
+    <div class="tp${pr.id === p.id ? ' cur' : ''}">
+      <button class="tp-h" data-p="${esc(pr.id)}"><span>${esc(pr.name || 'Ohne Titel')}</span><span class="muted">${pr.versions.length} ${pr.versions.length === 1 ? 'Version' : 'Versionen'}</span></button>
+      ${[...pr.versions].sort((a, b) => b.n - a.n).map(x => `<button class="tv${pr.id === p.id && x.id === pr.activeVersion ? ' on' : ''}" data-p="${esc(pr.id)}" data-v="${esc(x.id)}">${vdot(x.n)}V${x.n}<span class="nt">${esc(x.note)}</span><span class="muted">${fmtDate(x.created)}</span></button>`).join('')}
+    </div>`).join('');
+  let conf = '';
+  if (confirm === 'ver') conf = `<div class="muted">Version V${v.n} mit allen Szenen, Story und Figuren löschen?</div><div class="row"><button class="btn danger" id="pmYes" data-what="ver">Ja, V${v.n} löschen</button><button class="btn" id="pmNo">Abbrechen</button></div>`;
+  if (confirm === 'proj') conf = `<div class="muted">Projekt „${esc(p.name)}“ mit allen ${p.versions.length} Versionen löschen? Sichere es vorher, wenn du es behalten willst.</div><div class="row"><button class="btn danger" id="pmYes" data-what="proj">Ja, Projekt löschen</button><button class="btn" id="pmNo">Abbrechen</button></div>`;
+  $('#pm').innerHTML = `
+    <div class="pm-sec">Aktuelles Projekt</div>
+    <input class="inp" id="pmName" value="${esc(p.name)}" aria-label="Projektname">
+    <div class="fld"><label for="pmNote">Notiz zu V${v.n}</label><input class="inp" id="pmNote" value="${esc(v.note)}" placeholder="z. B. nach Feedback von Kevin"></div>
+    <div class="row"><button class="btn pri" id="pmNewVer">+ Neue Version V${Math.max(...p.versions.map(x => x.n)) + 1}</button><span class="muted">Kopie von V${v.n}</span></div>
+    <div class="pm-sec" style="margin-top:6px">Projekte und Versionen</div>
+    <div class="tree">${tree}</div>
+    <div class="row"><button class="btn" id="pmNewProj">+ Neues Projekt</button><button class="btn danger" id="pmDelVer" ${p.versions.length < 2 ? 'disabled title="Die einzige Version kann nicht gelöscht werden"' : ''}>Version löschen</button><button class="btn danger" id="pmDelProj" ${store.projects.length < 2 ? 'disabled title="Das einzige Projekt kann nicht gelöscht werden"' : ''}>Projekt löschen</button></div>
+    ${conf}`;
+}
+$('#pm').addEventListener('input', e => {
+  if (e.target.id === 'pmName') { P().name = e.target.value; renderHeader(); save(); }
+  if (e.target.id === 'pmNote') { V().note = e.target.value; save(); }
+});
+$('#pm').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.classList.contains('tv')) return switchTo(b.dataset.p, b.dataset.v);
+  if (b.classList.contains('tp-h')) { const pr = store.projects.find(x => x.id === b.dataset.p); return switchTo(pr.id, pr.activeVersion); }
+  const p = P();
+  if (b.id === 'pmNewVer') {
+    const n = Math.max(...p.versions.map(x => x.n)) + 1;
+    const nv = { id: uid(), n, created: today(), note: '', data: normData(JSON.parse(JSON.stringify(V().data))) };
+    p.versions.push(nv); p.activeVersion = nv.id; save(); renderHeader(); setTab(store.tab); renderPM();
+    toast(`V${n} angelegt. Was du jetzt neu schreibst oder änderst, wird ${VNAME[vcol(n)]}.`);
+  }
+  if (b.id === 'pmNewProj') {
+    const np = mkProject('Neues Projekt'); store.projects.push(np);
+    switchTo(np.id, np.versions[0].id); setTab('story'); openPM(); const i = $('#pmName'); i.focus(); i.select();
+  }
+  if (b.id === 'pmDelVer') renderPM('ver');
+  if (b.id === 'pmDelProj') renderPM('proj');
+  if (b.id === 'pmNo') renderPM();
+  if (b.id === 'pmYes') {
+    if (b.dataset.what === 'ver') {
+      const n = V().n; p.versions = p.versions.filter(x => x.id !== p.activeVersion);
+      const last = [...p.versions].sort((a, c) => c.n - a.n)[0]; switchTo(p.id, last.id); openPM(); toast(`V${n} gelöscht`);
+    } else {
+      const name = p.name; store.projects = store.projects.filter(x => x.id !== p.id);
+      const np = store.projects[0]; switchTo(np.id, np.activeVersion); toast(`„${name}“ gelöscht`);
+    }
+  }
+});
+
+/* ================= board view ================= */
+function applyView() {
+  world.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.z})`;
+  const g = 24 * view.z;
+  vp.style.backgroundSize = `${g}px ${g}px`;
+  vp.style.backgroundPosition = `${view.x}px ${view.y}px`;
+  $('#zoomVal').textContent = Math.round(view.z * 100) + '%';
+  D().view = { ...view };
+  hidePop();
+}
+function zoomAt(f, sx, sy) {
+  const z = Math.min(2.5, Math.max(0.15, view.z * f)), k = z / view.z;
+  view.x = sx - (sx - view.x) * k; view.y = sy - (sy - view.y) * k; view.z = z;
+  applyView(); save();
+}
+const toWorld = (cx, cy) => ({ x: (cx - view.x) / view.z, y: (cy - view.y) / view.z });
+function fit() {
+  const sc = D().scenes;
+  if (!sc.length) { view = { x: 120, y: 140, z: 1 }; applyView(); return; }
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const s of sc) { const r = rectOf(s.id); x1 = Math.min(x1, r.x); y1 = Math.min(y1, r.y); x2 = Math.max(x2, r.x + r.w); y2 = Math.max(y2, r.y + r.h); }
+  const W = innerWidth, H = innerHeight, pad = W < 720 ? 30 : 110, top = W < 900 ? 120 : 70;
+  const z = Math.min(1.2, Math.max(0.15, Math.min((W - pad * 2) / (x2 - x1), (H - top - pad) / (y2 - y1))));
+  view = { z, x: (W - (x2 - x1) * z) / 2 - x1 * z, y: top + (H - top - (y2 - y1) * z) / 2 - y1 * z };
+  applyView(); save();
+}
+function connectedIds() { const s = new Set(); D().links.forEach(l => { s.add(l.from); s.add(l.to); }); return s; }
+function cardInner(s, conn) {
+  const loose = D().scenes.length > 1 && !conn.has(s.id);
+  return `<div class="c-top"><span class="c-num">${esc(s.num)}</span><span class="c-tags">${loose ? '<span class="c-tag" title="Nicht verbunden">lose</span>' : ''}<span class="c-tag" title="Zuletzt bearbeitet in Version ${s.v}">V${s.v}</span></span></div>
+      <div class="c-slug">${s.heading ? esc(s.heading) : '<span class="ph">Überschrift</span>'}</div>
+      <div class="c-body">${s.content ? esc(s.content) : '<span class="ph">Szeneninhalt …</span>'}</div>
+      <button class="handle" aria-label="Verbindung ziehen" title="Ziehen, um zu verbinden">+</button>`;
+}
+function renderCards() {
+  const conn = connectedIds();
+  cardsEl.innerHTML = D().scenes.map(s => `<div class="card${sel && sel.kind === 'scene' && sel.id === s.id ? ' sel' : ''}" data-id="${esc(s.id)}" data-c="${vcol(s.v)}" style="transform:translate(${s.x}px,${s.y}px)">${cardInner(s, conn)}</div>`).join('');
+}
+function rectOf(id) {
+  const s = sceneById(id); if (!s) return null;
+  const el = cardsEl.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+  return { x: s.x, y: s.y, w: el ? el.offsetWidth : 240, h: el ? el.offsetHeight : 170 };
+}
+function edge(r, tx, ty, gap) {
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, dx = tx - cx, dy = ty - cy;
+  if (!dx && !dy) return { x: cx, y: cy };
+  const s = Math.min(dx ? (r.w / 2 + gap) / Math.abs(dx) : Infinity, dy ? (r.h / 2 + gap) / Math.abs(dy) : Infinity);
+  return { x: cx + dx * s, y: cy + dy * s };
+}
+let temp = null;
+function renderLinks() {
+  let svg = '', lbl = '';
+  const links = D().links;
+  for (const l of links) {
+    const a = rectOf(l.from), b = rectOf(l.to); if (!a || !b) continue;
+    const ac = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, bc = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    const p1 = edge(a, bc.x, bc.y, 4), p2 = edge(b, ac.x, ac.y, 8);
+    const rev = links.some(o => o.from === l.to && o.to === l.from);
+    const len = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+    const bend = rev ? 34 : 0, nx = -(p2.y - p1.y) / len * bend, ny = (p2.x - p1.x) / len * bend;
+    const mx = (p1.x + p2.x) / 2 + nx, my = (p1.y + p2.y) / 2 + ny;
+    const on = sel && sel.kind === 'link' && sel.id === l.id;
+    svg += `<path class="lk t-${l.type}${on ? ' on' : ''}" d="M${p1.x} ${p1.y} Q${mx} ${my} ${p2.x} ${p2.y}" marker-end="url(#ar-${l.type})"/>`;
+    lbl += `<button class="lbl t-${l.type}${on ? ' on' : ''}" data-link="${esc(l.id)}" style="left:${(p1.x + p2.x) / 2 + nx / 2}px;top:${(p1.y + p2.y) / 2 + ny / 2}px"><span>${l.type}</span></button>`;
+  }
+  if (temp) svg += `<path class="lk temp" d="M${temp.x1} ${temp.y1} L${temp.x2} ${temp.y2}" marker-end="url(#ar-temp)"/>`;
+  linkG.innerHTML = svg; labelsEl.innerHTML = lbl;
+}
+function render() { renderCards(); renderLinks(); }
+
+let mode = null, pinch = null;
+const pointers = new Map();
+vp.addEventListener('pointerdown', e => {
+  if (e.button > 0) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2 && mode && mode.kind === 'pan') { const [p, q] = [...pointers.values()]; pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), z: view.z }; return; }
+  if (e.target.closest('.lbl')) return;
+  const handle = e.target.closest('.handle'), card = e.target.closest('.card');
+  hidePop();
+  if (handle) {
+    const id = handle.closest('.card').dataset.id, r = rectOf(id), w = toWorld(e.clientX, e.clientY);
+    mode = { kind: 'connect', from: id }; temp = { x1: r.x + r.w / 2, y1: r.y + r.h / 2, x2: w.x, y2: w.y };
+  } else if (card) {
+    const s = sceneById(card.dataset.id), w = toWorld(e.clientX, e.clientY);
+    mode = { kind: 'drag', id: s.id, el: card, ox: w.x - s.x, oy: w.y - s.y, sx: e.clientX, sy: e.clientY, moved: false };
+  } else {
+    mode = { kind: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false }; vp.classList.add('panning');
+  }
+  vp.setPointerCapture(e.pointerId); e.preventDefault();
+});
+vp.addEventListener('pointermove', e => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch && pointers.size === 2) {
+    const [p, q] = [...pointers.values()], d = Math.hypot(p.x - q.x, p.y - q.y);
+    zoomAt((pinch.z * d / pinch.d) / view.z, (p.x + q.x) / 2, (p.y + q.y) / 2); if (mode) mode.moved = true; return;
+  }
+  if (!mode) return;
+  if (mode.kind === 'pan') {
+    const dx = e.clientX - mode.sx, dy = e.clientY - mode.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) mode.moved = true;
+    view.x = mode.vx + dx; view.y = mode.vy + dy; applyView();
+  } else if (mode.kind === 'drag') {
+    if (!mode.moved && Math.abs(e.clientX - mode.sx) + Math.abs(e.clientY - mode.sy) < 4) return;
+    mode.moved = true; mode.el.classList.add('dragging');
+    const w = toWorld(e.clientX, e.clientY), s = sceneById(mode.id);
+    s.x = Math.round(w.x - mode.ox); s.y = Math.round(w.y - mode.oy);
+    mode.el.style.transform = `translate(${s.x}px,${s.y}px)`; renderLinks();
+  } else if (mode.kind === 'connect') {
+    const w = toWorld(e.clientX, e.clientY); temp.x2 = w.x; temp.y2 = w.y;
+    cardsEl.querySelectorAll('.drop').forEach(c => c.classList.remove('drop'));
+    const over = targetCard(e); if (over && over.dataset.id !== mode.from) over.classList.add('drop');
+    renderLinks();
+  }
+});
+function targetCard(e) { for (const el of document.elementsFromPoint(e.clientX, e.clientY)) { const c = el.closest && el.closest('.card'); if (c) return c; } return null; }
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pinch) { if (pointers.size < 2) pinch = null; if (pointers.size) return; }
+  if (!mode) return;
+  const m = mode; mode = null; vp.classList.remove('panning');
+  if (m.kind === 'pan') { if (!m.moved) select(null); else save(); }
+  else if (m.kind === 'drag') { m.el.classList.remove('dragging'); if (m.moved) save(); else select({ kind: 'scene', id: m.id }); }
+  else if (m.kind === 'connect') {
+    const over = targetCard(e); temp = null;
+    cardsEl.querySelectorAll('.drop').forEach(c => c.classList.remove('drop'));
+    const links = D().links;
+    if (over && over.dataset.id !== m.from) {
+      const to = over.dataset.id, ex = links.find(l => l.from === m.from && l.to === to);
+      if (ex) { ex.type = newType; toast('Verbindung geändert'); } else links.push({ id: uid(), from: m.from, to, type: newType });
+      save(); render(); refreshPanel();
+    } else if (!over) {
+      const w = toWorld(e.clientX, e.clientY), s = addScene(w.x - 120, w.y - 85, false);
+      links.push({ id: uid(), from: m.from, to: s.id, type: newType });
+      save(); select({ kind: 'scene', id: s.id }); setTimeout(() => $('#fHead').focus(), 30);
+    } else renderLinks();
+  }
+}
+vp.addEventListener('pointerup', endPointer);
+vp.addEventListener('pointercancel', endPointer);
+vp.addEventListener('dblclick', e => {
+  if (e.target.closest('.card') || e.target.closest('.lbl')) return;
+  const w = toWorld(e.clientX, e.clientY), s = addScene(w.x - 120, w.y - 85, false);
+  select({ kind: 'scene', id: s.id }); setTimeout(() => $('#fHead').focus(), 30);
+});
+vp.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey || (Math.abs(e.deltaY) >= 40 && e.deltaX === 0 && Number.isInteger(e.deltaY))) zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018)), e.clientX, e.clientY);
+  else { view.x -= e.deltaX; view.y -= e.deltaY; applyView(); save(); }
+}, { passive: false });
+labelsEl.addEventListener('click', e => {
+  const b = e.target.closest('.lbl'); if (!b) return;
+  select({ kind: 'link', id: b.dataset.link });
+  const r = b.getBoundingClientRect(); showPop(r.left + r.width / 2, r.top);
+});
+
+function select(s) {
+  sel = s; render();
+  $('#panel').hidden = !(s && s.kind === 'scene');
+  if (s && s.kind === 'scene') { $('#flow').hidden = true; $('#btnFlow').classList.remove('on'); fillPanel(); }
+  if (!s || s.kind !== 'link') hidePop();
+}
+function fillPanel() {
+  const s = sceneById(sel.id); if (!s) return;
+  $('#fNum').value = s.num; $('#fHead').value = s.heading; $('#fBody').value = s.content;
+  refreshPanel();
+}
+function sceneLabel(id) { const s = sceneById(id); return s ? `${s.num} · ${s.heading || 'ohne Überschrift'}` : '?'; }
+function refreshPanel() {
+  if (!sel || sel.kind !== 'scene' || $('#panel').hidden) return;
+  const s = sceneById(sel.id), cur = V().n; if (!s) return;
+  $('#fVer').innerHTML = `${vdot(s.v)} V${s.v}` + (s.v !== cur ? ` · wird ${VNAME[vcol(cur)]} (V${cur}), sobald du Text änderst` : '');
+  const out = D().links.filter(l => l.from === sel.id), inc = D().links.filter(l => l.to === sel.id);
+  const rows = [
+    ...inc.map(l => `<div class="conn"><span class="muted">${esc(sceneLabel(l.from))}</span> <b class="t-${l.type}">${l.type.toUpperCase()}</b> <span>diese Szene</span></div>`),
+    ...out.map(l => `<div class="conn"><span>Diese Szene</span> <b class="t-${l.type}">${l.type.toUpperCase()}</b> <span class="muted">${esc(sceneLabel(l.to))}</span></div>`)];
+  $('#conns').innerHTML = rows.length ? rows.join('') : '<div class="muted">Noch keine Verbindung. Zieh den Punkt am rechten Rand der Karte auf eine andere Szene.</div>';
+}
+function bindField(id, key) {
+  $(id).addEventListener('input', e => {
+    const s = sceneById(sel.id); if (!s) return;
+    s[key] = e.target.value;
+    if (key !== 'num') s.v = V().n;
+    const el = cardsEl.querySelector(`.card[data-id="${CSS.escape(s.id)}"]`);
+    if (el) { el.innerHTML = cardInner(s, connectedIds()); el.dataset.c = vcol(s.v); }
+    renderLinks(); refreshPanel(); save();
+  });
+}
+bindField('#fNum', 'num'); bindField('#fHead', 'heading'); bindField('#fBody', 'content');
+$('#panelClose').onclick = () => select(null);
+$('#btnDelScene').onclick = () => {
+  const id = sel.id, d = D();
+  d.scenes = d.scenes.filter(s => s.id !== id); d.links = d.links.filter(l => l.from !== id && l.to !== id);
+  save(); select(null); toast('Szene gelöscht');
+};
+function showPop(x, y) { const p = $('#pop'); p.hidden = false; p.style.left = Math.max(150, Math.min(innerWidth - 150, x)) + 'px'; p.style.top = Math.max(120, y) + 'px'; }
+function hidePop() { $('#pop').hidden = true; }
+$('#pop').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !sel || sel.kind !== 'link') return;
+  const d = D(), l = d.links.find(x => x.id === sel.id); if (!l) return;
+  if (b.dataset.set) l.type = b.dataset.set;
+  if (b.dataset.act === 'flip') [l.from, l.to] = [l.to, l.from];
+  if (b.dataset.act === 'del') { d.links = d.links.filter(x => x.id !== l.id); save(); select(null); return; }
+  save(); render(); hidePop();
+});
+function nextNum() { const n = D().scenes.map(s => parseInt(s.num, 10)).filter(Number.isFinite); return String((n.length ? Math.max(...n) : 0) + 1); }
+function addScene(x, y, open = true) {
+  const s = { id: uid(), num: nextNum(), heading: '', content: '', x: Math.round(x), y: Math.round(y), v: V().n };
+  D().scenes.push(s); save(); render();
+  if (open) { select({ kind: 'scene', id: s.id }); setTimeout(() => $('#fHead').focus(), 30); }
+  return s;
+}
+$('#btnAdd').onclick = () => {
+  const c = toWorld(innerWidth / 2, innerHeight / 2); let x = c.x - 120, y = c.y - 85;
+  while (D().scenes.some(s => Math.abs(s.x - x) < 30 && Math.abs(s.y - y) < 30)) { x += 30; y += 30; }
+  addScene(x, y);
+};
+document.querySelectorAll('.ib.ty').forEach(b => b.onclick = () => { newType = b.dataset.type; document.querySelectorAll('.ib.ty').forEach(x => x.classList.toggle('on', x === b)); });
+$('#btnZoomIn').onclick = () => zoomAt(1.2, innerWidth / 2, innerHeight / 2);
+$('#btnZoomOut').onclick = () => zoomAt(1 / 1.2, innerWidth / 2, innerHeight / 2);
+$('#btnFit').onclick = fit;
+$('#btnRenum').onclick = () => {
+  [...D().scenes].sort((a, b) => a.x - b.x || a.y - b.y).forEach((s, i) => s.num = String(i + 1));
+  save(); render(); if (sel && sel.kind === 'scene') fillPanel(); renderFlow(); toast('Neu nummeriert, von links nach rechts');
+};
+const natCmp = (a, b) => a.num.localeCompare(b.num, 'de', { numeric: true });
+function renderFlow() {
+  if ($('#flow').hidden) return;
+  const conn = connectedIds(), d = D();
+  $('#flowList').innerHTML = [...d.scenes].sort(natCmp).map(s => {
+    const out = d.links.filter(l => l.from === s.id);
+    return `<button class="fl-item" data-id="${esc(s.id)}">
+      <span class="fl-h">${vdot(s.v)}<span>${esc(s.num)}</span><span>${esc(s.heading || 'ohne Überschrift')}</span></span>
+      ${s.content ? `<span class="fl-b">${esc(s.content)}</span>` : ''}
+      ${out.length ? `<span class="fl-l">${out.map(l => `<span class="conn"><b class="t-${l.type}">${l.type.toUpperCase()}</b><span>${esc(sceneById(l.to)?.num ?? '')}</span></span>`).join('')}</span>` : ''}
+      ${d.scenes.length > 1 && !conn.has(s.id) ? '<span class="warn">Lose Szene, nicht verbunden</span>' : ''}
+    </button>`;
+  }).join('') || '<div class="muted">Noch keine Szenen.</div>';
+}
+$('#btnFlow').onclick = () => { const f = $('#flow'), show = f.hidden; if (show) select(null); f.hidden = !show; $('#btnFlow').classList.toggle('on', show); renderFlow(); };
+$('#flowClose').onclick = () => { $('#flow').hidden = true; $('#btnFlow').classList.remove('on'); };
+$('#flowList').addEventListener('click', e => {
+  const b = e.target.closest('.fl-item'); if (!b) return;
+  const r = rectOf(b.dataset.id);
+  view.x = innerWidth / 2 - (r.x + r.w / 2) * view.z - (innerWidth > 720 ? 160 : 0);
+  view.y = innerHeight / 2 - (r.y + r.h / 2) * view.z; applyView(); save();
+  sel = { kind: 'scene', id: b.dataset.id }; render();
+});
+
+/* ================= story view ================= */
+function autosize(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; }
+function renderStory() {
+  const d = D(), v = V();
+  $('#sProj').textContent = P().name;
+  $('#sVer').innerHTML = `${vdot(v.n)}V${v.n}`;
+  $('#sLog').value = d.logline; $('#sStory').value = d.story;
+  requestAnimationFrame(() => { autosize($('#sLog')); autosize($('#sStory')); });
+  storyStats();
+}
+function storyStats() {
+  const t = D().story.trim(), words = t ? t.split(/\s+/).length : 0;
+  const paras = t ? t.split(/\n\s*\n|\n/).filter(x => x.trim()).length : 0;
+  $('#sStats').innerHTML = `<span>${words.toLocaleString('de-AT')} Wörter</span><span>${paras} Absätze</span><span>ca. ${Math.max(1, Math.round(words / 230))} Min. Lesezeit</span><span>${D().scenes.length} Szenen am Board</span>`;
+}
+$('#sLog').addEventListener('input', e => { D().logline = e.target.value; autosize(e.target); save(); });
+$('#sStory').addEventListener('input', e => { D().story = e.target.value; autosize(e.target); storyStats(); save(); });
+addEventListener('resize', () => { if (store.tab === 'story') { autosize($('#sLog')); autosize($('#sStory')); } });
+
+/* ================= characters ================= */
+const initials = n => (n || '?').replace(/^(der|die|das)\s+/i, '').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
+const traitList = t => String(t || '').split(',').map(x => x.trim()).filter(Boolean);
+function charScenes(c) {
+  const name = (c.name || '').replace(/^(der|die|das)\s+/i, '').trim();
+  if (name.length < 3) return [];
+  const re = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  return D().scenes.filter(s => re.test(s.heading + ' ' + s.content)).sort(natCmp);
+}
+function renderChars() {
+  const d = D(), v = V();
+  $('#cSub').innerHTML = `${esc(P().name)} · ${vdot(v.n)} V${v.n} · ${d.characters.length} Figuren`;
+  $('#cGrid').innerHTML = d.characters.map(c => {
+    const meta = [c.age, c.gender].filter(Boolean).join(' · ');
+    return `<button class="ccard${c.id === charSel ? ' sel' : ''}" data-id="${esc(c.id)}">
+      <div class="cimg">${c.image ? `<img src="${c.image}" alt="">` : `<span class="cini">${esc(initials(c.name))}</span>`}</div>
+      <div class="cinfo">
+        ${c.role ? `<span class="role">${esc(c.role)}</span>` : ''}
+        <span class="cname">${esc(c.name || 'Ohne Namen')}</span>
+        ${meta ? `<span class="cmeta">${esc(meta)}</span>` : ''}
+        ${traitList(c.traits).length ? `<span class="chips">${traitList(c.traits).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</span>` : ''}
+        ${c.desc ? `<span class="cdesc">${esc(c.desc)}</span>` : ''}
+      </div></button>`;
+  }).join('') || '<div class="muted">Noch keine Figuren. Leg mit „+ Figur anlegen“ die erste an.</div>';
+}
+const charById = id => D().characters.find(c => c.id === id);
+function openChar(id) {
+  charSel = id; const c = charById(id); if (!c) return;
+  $('#charPanel').hidden = false;
+  $('#cName').value = c.name; $('#cAge').value = c.age; $('#cGender').value = c.gender; $('#cRole').value = c.role;
+  $('#cTraits').value = c.traits; $('#cDesc').value = c.desc;
+  charPreview(c); charSceneList(c); renderChars();
+}
+function charPreview(c) { $('#cPrev').innerHTML = c.image ? `<img src="${c.image}" alt="Bild von ${esc(c.name)}">` : `<span class="cini">${esc(initials(c.name))}</span>`; $('#cRmImg').hidden = !c.image; }
+function charSceneList(c) { const sc = charScenes(c); $('#cScenes').textContent = sc.length ? sc.map(s => s.num).join(', ') : 'Name kommt in keiner Szene vor'; }
+$('#cGrid').addEventListener('click', e => { const b = e.target.closest('.ccard'); if (b) openChar(b.dataset.id); });
+$('#btnAddChar').onclick = () => { const c = { id: uid(), name: '', age: '', gender: '', role: '', traits: '', desc: '', image: '' }; D().characters.push(c); save(); openChar(c.id); $('#cName').focus(); };
+[['#cName', 'name'], ['#cAge', 'age'], ['#cGender', 'gender'], ['#cRole', 'role'], ['#cTraits', 'traits'], ['#cDesc', 'desc']].forEach(([id, k]) => {
+  $(id).addEventListener('input', e => { const c = charById(charSel); if (!c) return; c[k] = e.target.value; save(); renderChars(); if (k === 'name') { charPreview(c); charSceneList(c); } });
+});
+$('#charClose').onclick = () => { $('#charPanel').hidden = true; charSel = null; renderChars(); };
+$('#cDel').onclick = () => { const d = D(); d.characters = d.characters.filter(c => c.id !== charSel); charSel = null; $('#charPanel').hidden = true; save(); renderChars(); toast('Figur gelöscht'); };
+$('#cPick').onclick = () => $('#cFile').click();
+$('#cRmImg').onclick = () => { const c = charById(charSel); c.image = ''; save(); charPreview(c); renderChars(); };
+$('#cFile').onchange = e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 520, k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0, cv.width, cv.height);
+      const c = charById(charSel); if (!c) return;
+      c.image = cv.toDataURL('image/jpeg', 0.82); save(); charPreview(c); renderChars();
+    };
+    img.onerror = () => toast('Dieses Bild kann ich nicht lesen. Bitte JPG oder PNG nehmen.');
+    img.src = r.result;
+  };
+  r.readAsDataURL(f);
+};
+
+/* ================= files: save helper ================= */
+async function saveFile(name, data) {
+  if (window.claude && typeof window.claude.use === 'function') {
+    try {
+      const dl = await window.claude.use('downloads');
+      if (dl) { await dl.save({ filename: name, data }); toast('Gespeichert'); return; }
+    } catch (e) { if (e && e.code === 'declined') { toast('Speichern abgebrochen'); return; } }
+  }
+  const blob = data instanceof Blob ? data : new Blob([data], { type: name.endsWith('.json') ? 'application/json' : 'application/octet-stream' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const slug = s => (s || 'projekt').toLowerCase().replace(/[^a-z0-9äöüß]+/gi, '-').replace(/^-|-$/g, '') || 'projekt';
+
+/* ================= PDF ================= */
+function loadJsPDF() {
+  if (window.jspdf) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = res; s.onerror = () => rej(new Error('jspdf')); document.head.append(s);
+  });
+}
+$('#btnPdf').onclick = () => {
+  openModal(`<h3>PDF für den Drehbuchstart</h3>
+    <p>${esc(P().name)}, Version V${V().n}. Wähle, was ins PDF soll.</p>
+    <label class="opt"><input type="checkbox" id="oStory" checked> Logline und Hauptstory</label>
+    <label class="opt"><input type="checkbox" id="oChars" checked> Figuren mit Bild und Eigenschaften</label>
+    <label class="opt"><input type="checkbox" id="oList" checked> Szenenübersicht (Nummer und Überschrift)</label>
+    <label class="opt"><input type="checkbox" id="oScenes" checked> Alle Szenen ausführlich, mit therefore / because / but</label>
+    <div class="row"><button class="btn pri" id="pdfGo">PDF erzeugen</button><button class="btn" data-close>Abbrechen</button></div>`);
+  $('#pdfGo').onclick = async () => {
+    const opts = { story: $('#oStory').checked, chars: $('#oChars').checked, list: $('#oList').checked, scenes: $('#oScenes').checked };
+    $('#pdfGo').disabled = true; $('#pdfGo').textContent = 'Wird erzeugt …';
+    try { await loadJsPDF(); const blob = buildPDF(opts); closeModal(); await saveFile(`${slug(P().name)}-v${V().n}.pdf`, blob); }
+    catch (e) { toast('PDF konnte nicht erzeugt werden. Bitte Internetverbindung prüfen.'); $('#pdfGo').disabled = false; $('#pdfGo').textContent = 'PDF erzeugen'; }
+  };
+};
+function buildPDF(o) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const p = P(), v = V(), d = v.data;
+  const W = 210, H = 297, M = 22, CW = W - 2 * M, PT = 0.3528;
+  const INK = [30, 35, 43], MUTE = [105, 112, 125], ACC = [56, 89, 214];
+  const TC = { therefore: [56, 89, 214], because: [194, 106, 0], but: [194, 51, 77] };
+  const clean = t => String(t || '').replace(/⇄/g, '<->').replace(/→/g, '->').replace(/[^\x09\x0A\x0D\x20-\x7E -ÿ–—‘’‚“”„•…€]/g, '');
+  let y = M;
+  const need = h => { if (y + h > H - M) { doc.addPage(); y = M; } };
+  function txt(t, { size = 11, font = 'helvetica', style = 'normal', color = INK, lh = 1.45, indent = 0, after = 2, width } = {}) {
+    doc.setFont(font, style); doc.setFontSize(size); doc.setTextColor(...color);
+    const lines = doc.splitTextToSize(clean(t), (width || CW) - indent), step = size * PT * lh;
+    for (const ln of lines) { need(step); doc.text(ln, M + indent, y + size * PT); y += step; }
+    y += after;
+  }
+  function section(title) {
+    doc.addPage(); y = M;
+    txt(title.toUpperCase(), { size: 9, style: 'bold', color: ACC, after: 1 });
+    doc.setDrawColor(...ACC); doc.setLineWidth(0.5); doc.line(M, y, M + 18, y); y += 8;
+  }
+  // cover
+  y = 90;
+  txt('DREHBUCH-VORBEREITUNG', { size: 9, style: 'bold', color: ACC, after: 6 });
+  txt(p.name, { size: 30, font: 'courier', style: 'bold', lh: 1.2, after: 6 });
+  txt(`Version V${v.n}${v.note ? ' · ' + v.note : ''}`, { size: 12, color: MUTE, after: 1 });
+  txt(`Stand ${fmtDate(today())} · ${d.scenes.length} Szenen · ${d.characters.length} Figuren`, { size: 12, color: MUTE, after: 14 });
+  if (d.logline) { txt('LOGLINE', { size: 9, style: 'bold', color: MUTE, after: 2 }); txt(d.logline, { size: 12.5, style: 'italic', lh: 1.5 }); }
+  if (o.story && d.story.trim()) {
+    section('Hauptstory');
+    for (const para of d.story.split('\n')) {
+      if (!para.trim()) { y += 3; continue; }
+      const isHead = para.length < 70 && !/[.!?“"]$/.test(para.trim());
+      if (isHead) { need(14); txt(para, { size: 12, style: 'bold', after: 1.5 }); }
+      else txt(para, { size: 11, lh: 1.6, after: 2.5 });
+    }
+  }
+  if (o.chars && d.characters.length) {
+    section('Figuren');
+    for (const c of d.characters) {
+      const imgW = 30, imgH = 22.5, hasImg = !!c.image;
+      need(32);
+      const top = y, ind = hasImg ? imgW + 6 : 0;
+      if (hasImg) { try { doc.addImage(c.image, 'JPEG', M, y, imgW, imgH); } catch (e) {} }
+      txt(c.name || 'Ohne Namen', { size: 13, style: 'bold', indent: ind, after: 0.5 });
+      const meta = [c.role, c.age, c.gender].filter(Boolean).join(' · ');
+      if (meta) txt(meta, { size: 9.5, color: MUTE, indent: ind, after: 1 });
+      if (traitList(c.traits).length) txt('Eigenschaften: ' + traitList(c.traits).join(', '), { size: 10, indent: ind, after: 1 });
+      if (c.desc) txt(c.desc, { size: 10.5, lh: 1.5, indent: ind, after: 1 });
+      const sc = charScenes(c); if (sc.length) txt('Kommt vor in Szene ' + sc.map(s => s.num).join(', '), { size: 9, color: MUTE, indent: ind, after: 1 });
+      if (hasImg && y < top + imgH + 2) y = top + imgH + 2;
+      y += 5;
+    }
+  }
+  const sorted = [...d.scenes].sort(natCmp);
+  if (o.list && sorted.length) {
+    section('Szenenübersicht');
+    for (const s of sorted) {
+      need(7);
+      doc.setFont('courier', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...INK);
+      doc.text(clean(s.num), M, y + 10.5 * PT);
+      txt(s.heading || 'ohne Überschrift', { size: 10.5, font: 'courier', style: 'bold', indent: 12, after: 1.6 });
+    }
+  }
+  if (o.scenes && sorted.length) {
+    section('Szenen');
+    for (const s of sorted) {
+      need(30);
+      doc.setDrawColor(225); doc.setLineWidth(0.2); doc.line(M, y, W - M, y); y += 5;
+      doc.setFont('courier', 'bold'); doc.setFontSize(16); doc.setTextColor(...INK); doc.text(clean(s.num), M, y + 16 * PT * .8);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...MUTE); doc.text('V' + s.v, W - M, y + 3, { align: 'right' });
+      txt(s.heading || 'ohne Überschrift', { size: 12, font: 'courier', style: 'bold', indent: 14, after: 2 });
+      if (s.content) txt(s.content, { size: 11, lh: 1.55, indent: 14, after: 2 });
+      const inc = d.links.filter(l => l.to === s.id), out = d.links.filter(l => l.from === s.id);
+      for (const l of inc) { const a = sceneById(l.from); if (a) txt(`Folgt auf ${a.num} (${l.type.toUpperCase()}): ${a.heading}`, { size: 9, color: MUTE, indent: 14, after: 0.6 }); }
+      for (const l of out) { const b = sceneById(l.to); if (b) txt(`${l.type.toUpperCase()} » ${b.num}: ${b.heading}`, { size: 9.5, style: 'bold', color: TC[l.type], indent: 14, after: 0.6 }); }
+      y += 6;
+    }
+  }
+  const n = doc.getNumberOfPages();
+  for (let i = 2; i <= n; i++) {
+    doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTE);
+    doc.text(clean(`${p.name} · V${v.n}`), M, H - 12); doc.text(`${i - 1} / ${n - 1}`, W - M, H - 12, { align: 'right' });
+  }
+  return doc.output('blob');
+}
+
+/* ================= export / import ================= */
+function openModal(html) { $('#mbox').innerHTML = html; $('#modal').hidden = false; }
+function closeModal() { $('#modal').hidden = true; }
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-close]')) closeModal(); });
+$('#btnExport').onclick = () => {
+  const json = JSON.stringify({ app: 'szenenboard', format: 2, project: P() }, null, 2);
+  openModal(`<h3>Projekt sichern</h3>
+    <p>Sichert „${esc(P().name)}“ mit allen ${P().versions.length} Versionen, Story, Figuren und Bildern als JSON-Datei. Mit „Laden“ holst du es wieder zurück, auch auf einem anderen Computer.</p>
+    <textarea id="exText" readonly>${esc(json.length > 200000 ? json.slice(0, 200000) + '\n…' : json)}</textarea>
+    <div class="row"><button class="btn pri" id="exDl">Datei speichern</button><button class="btn" id="exCopy">Text kopieren</button><button class="btn" data-close>Schließen</button></div>`);
+  $('#exDl').onclick = () => saveFile(`${slug(P().name)}.json`, json);
+  $('#exCopy').onclick = () => {
+    const t = $('#exText');
+    if (navigator.clipboard) navigator.clipboard.writeText(json).then(() => toast('Kopiert'), () => { t.focus(); t.select(); toast('Text markiert, jetzt Strg+C / ⌘C'); });
+    else { t.focus(); t.select(); }
+  };
+};
+$('#btnImport').onclick = () => {
+  openModal(`<h3>Projekt laden</h3>
+    <p>Wähle eine gesicherte JSON-Datei oder füge den Text ein. Das Projekt kommt zusätzlich in deine Projektliste, nichts wird überschrieben.</p>
+    <input type="file" id="imFile" accept=".json,application/json">
+    <textarea id="imText" placeholder='{ "project": … }'></textarea>
+    <div class="row"><button class="btn pri" id="imGo">Laden</button><button class="btn" data-close>Abbrechen</button></div>`);
+  $('#imFile').onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => $('#imText').value = r.result; r.readAsText(f); };
+  $('#imGo').onclick = () => {
+    try {
+      const d = JSON.parse($('#imText').value);
+      let incoming = [];
+      if (d.project) incoming = [d.project]; else if (Array.isArray(d.projects)) incoming = d.projects;
+      else if (Array.isArray(d.scenes)) incoming = [{ name: d.title || 'Importiertes Board', versions: [{ n: 1, data: d }] }];
+      else throw new Error();
+      let last;
+      for (const raw of incoming) {
+        const pr = normProject(raw);
+        if (store.projects.some(x => x.id === pr.id)) { pr.id = uid(); pr.name += ' (geladen)'; }
+        store.projects.push(pr); last = pr;
+      }
+      closeModal(); switchTo(last.id, last.activeVersion); toast(`„${last.name}“ geladen`);
+    } catch (e) { toast('Das ist keine gültige Szenenboard-Datei.'); }
+  };
+};
+
+/* ================= keyboard & toast ================= */
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,textarea,select')) { if (e.key === 'Escape') e.target.blur(); return; }
+  if (e.key === 'Escape') { closeModal(); closePM(); if (store.tab === 'board') select(null); }
+  if (store.tab !== 'board') return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && sel) {
+    if (sel.kind === 'link') { const d = D(); d.links = d.links.filter(l => l.id !== sel.id); save(); select(null); }
+    else if (sel.kind === 'scene') $('#btnDelScene').click();
+  }
+  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); $('#btnAdd').click(); }
+});
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
+
+/* ================= boot ================= */
+const d0 = D(), hadView = !!d0.view;
+if (hadView) view = { ...d0.view };
+renderHeader(); setTab(store.tab);
+if (!hadView) requestAnimationFrame(fit);
+})();
+</script>
+
+</body>
+</html>
