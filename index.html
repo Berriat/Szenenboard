@@ -1146,8 +1146,8 @@ function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = fal
 
 /* ================= online storage (Supabase) ================= */
 // Supabase-Zugang: Project URL und anon/publishable Key. Leer = alles bleibt nur im Browser.
-const CLOUD = { url: '', key: '' };
-const SB_LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js';
+const CLOUD = { url: 'https://iihjntrykczmxjhirpqm.supabase.co', key: 'sb_publishable_LU2Z2eEIAZHMgv_6WRUYaw_XTX5V4O2' };
+const SB_LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
 const cloudOn = !!(CLOUD.url && CLOUD.key) && /^https?:$/.test(location.protocol);
 const CLIENT_ID = uid() + uid();
 const SYNC_KEY = 'szenenboard.sync';
